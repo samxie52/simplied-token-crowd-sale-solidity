@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Context.sol";
 import "./interfaces/ICrowdsale.sol";
 import "./interfaces/IWhitelistManager.sol";
+import "./interfaces/IPricingStrategy.sol";
 import "./CrowdsaleToken.sol";
 import "./utils/CrowdsaleConstants.sol";
 
@@ -54,6 +55,35 @@ contract TokenCrowdsale is
     /// @dev 参与者映射
     mapping(address => bool) public hasParticipated;
     
+    /// @dev 定价策略合约
+    IPricingStrategy public pricingStrategy;
+    
+    /// @dev 用户购买记录
+    mapping(address => PurchaseRecord[]) public purchaseHistory;
+    
+    /// @dev 用户总购买金额
+    mapping(address => uint256) public totalPurchased;
+    
+    /// @dev 用户最后购买时间
+    mapping(address => uint256) public lastPurchaseTime;
+    
+    /// @dev 购买冷却时间 (5分钟)
+    uint256 public constant PURCHASE_COOLDOWN = 5 minutes;
+    
+    // ============ Structs ============
+    
+    /**
+     * @dev 购买记录结构
+     */
+    struct PurchaseRecord {
+        uint256 weiAmount;        // ETH金额
+        uint256 tokenAmount;      // 代币数量
+        uint256 price;            // 购买时价格
+        uint256 timestamp;        // 购买时间
+        IPricingStrategy.PricingType pricingType; // 定价类型
+        bool isWhitelistPurchase; // 是否白名单购买
+    }
+    
     // ============ Modifiers ============
     
     /**
@@ -100,6 +130,37 @@ contract TokenCrowdsale is
         _;
     }
     
+    /**
+     * @dev 检查购买冷却时间
+     */
+    modifier purchaseCooldown(address buyer) {
+        require(
+            block.timestamp >= lastPurchaseTime[buyer] + PURCHASE_COOLDOWN,
+            "TokenCrowdsale: purchase cooldown not passed"
+        );
+        _;
+    }
+    
+    /**
+     * @dev 检查购买金额限制
+     */
+    modifier validPurchaseAmount(uint256 weiAmount) {
+        require(weiAmount >= config.minPurchase, "TokenCrowdsale: below minimum purchase");
+        require(weiAmount <= config.maxPurchase, "TokenCrowdsale: exceeds maximum purchase");
+        _;
+    }
+    
+    /**
+     * @dev 检查众筹是否活跃
+     */
+    modifier onlyActiveSale() {
+        require(
+            currentPhase == CrowdsalePhase.PRESALE || currentPhase == CrowdsalePhase.PUBLIC_SALE,
+            "TokenCrowdsale: sale not active"
+        );
+        _;
+    }
+    
     // ============ Constructor ============
     
     /**
@@ -136,7 +197,113 @@ contract TokenCrowdsale is
         // 初始化时间戳
         lastConfigUpdateTime = block.timestamp;
         
-        emit PhaseChanged(CrowdsalePhase.PENDING, CrowdsalePhase.PENDING, block.timestamp, _admin);
+        emit CrowdsaleInitialized(_admin, block.timestamp);
+    }
+    
+    // ============ Purchase Functions ============
+    
+    /**
+     * @dev 购买代币 - 核心购买功能
+     */
+    function purchaseTokens() 
+        external 
+        payable 
+        nonReentrant
+        whenNotPaused
+        onlyActiveSale
+        withinTimeWindow
+        validPurchaseAmount(msg.value)
+        purchaseCooldown(msg.sender)
+    {
+        address buyer = msg.sender;
+        uint256 weiAmount = msg.value;
+        
+        // 检查硬顶限制
+        require(stats.totalRaised + weiAmount <= config.hardCap, "TokenCrowdsale: exceeds hard cap");
+        
+        // 检查白名单权限（预售阶段）
+        if (currentPhase == CrowdsalePhase.PRESALE) {
+            require(whitelistManager.isWhitelisted(buyer), "TokenCrowdsale: not whitelisted for presale");
+        }
+        
+        // 检查定价策略是否设置
+        require(address(pricingStrategy) != address(0), "TokenCrowdsale: pricing strategy not set");
+        
+        // 验证购买有效性
+        require(pricingStrategy.isValidPurchase(buyer, weiAmount), "TokenCrowdsale: invalid purchase");
+        
+        // 计算代币数量
+        uint256 tokenAmount = pricingStrategy.calculateTokenAmount(weiAmount, buyer);
+        require(tokenAmount > 0, "TokenCrowdsale: invalid token amount");
+        
+        // 执行购买
+        _processPurchase(buyer, weiAmount, tokenAmount);
+        
+        // 转移资金到资金钱包
+        fundingWallet.transfer(weiAmount);
+        
+        emit TokensPurchased(buyer, weiAmount, tokenAmount, block.timestamp);
+    }
+    
+    /**
+     * @dev 批量购买（为多个地址购买代币）- 仅管理员
+     */
+    function batchPurchase(
+        address[] calldata buyers,
+        uint256[] calldata weiAmounts
+    ) 
+        external 
+        payable 
+        nonReentrant
+        onlyRole(CrowdsaleConstants.CROWDSALE_OPERATOR_ROLE)
+        whenNotPaused
+        onlyActiveSale
+    {
+        require(buyers.length == weiAmounts.length, "TokenCrowdsale: arrays length mismatch");
+        require(buyers.length <= 50, "TokenCrowdsale: too many buyers");
+        
+        uint256 totalWeiNeeded = 0;
+        for (uint256 i = 0; i < weiAmounts.length; i++) {
+            totalWeiNeeded += weiAmounts[i];
+        }
+        require(msg.value >= totalWeiNeeded, "TokenCrowdsale: insufficient payment");
+        
+        for (uint256 i = 0; i < buyers.length; i++) {
+            address buyer = buyers[i];
+            uint256 weiAmount = weiAmounts[i];
+            
+            if (weiAmount == 0 || buyer == address(0)) continue;
+            
+            // 检查购买限制
+            if (weiAmount < config.minPurchase || weiAmount > config.maxPurchase) continue;
+            
+            // 检查硬顶
+            if (stats.totalRaised + weiAmount > config.hardCap) break;
+            
+            // 预售阶段检查白名单
+            if (currentPhase == CrowdsalePhase.PRESALE && !whitelistManager.isWhitelisted(buyer)) {
+                continue;
+            }
+            
+            // 计算代币数量
+            uint256 tokenAmount = pricingStrategy.calculateTokenAmount(weiAmount, buyer);
+            if (tokenAmount == 0) continue;
+            
+            // 执行购买
+            _processPurchase(buyer, weiAmount, tokenAmount);
+            
+            emit TokensPurchased(buyer, weiAmount, tokenAmount, block.timestamp);
+        }
+        
+        // 转移资金
+        if (address(this).balance > 0) {
+            fundingWallet.transfer(address(this).balance);
+        }
+        
+        // 退还多余的ETH
+        if (msg.value > totalWeiNeeded) {
+            payable(msg.sender).transfer(msg.value - totalWeiNeeded);
+        }
     }
     
     // ============ View Functions ============
@@ -437,7 +604,155 @@ contract TokenCrowdsale is
         emit FundingWalletUpdated(oldWallet, _newWallet, _msgSender());
     }
     
+    /**
+     * @dev 设置定价策略
+     */
+    function setPricingStrategy(address _pricingStrategy) 
+        external 
+        onlyRole(CrowdsaleConstants.CROWDSALE_ADMIN_ROLE)
+        validAddress(_pricingStrategy)
+        whenNotPaused
+    {
+        pricingStrategy = IPricingStrategy(_pricingStrategy);
+        emit PricingStrategyUpdated(_pricingStrategy, _msgSender());
+    }
+    
+    // ============ Query Functions ============
+    
+    /**
+     * @dev 获取用户购买历史
+     */
+    function getUserPurchaseHistory(address user) 
+        external view returns (PurchaseRecord[] memory) {
+        return purchaseHistory[user];
+    }
+    
+    /**
+     * @dev 获取用户总购买金额
+     */
+    function getUserTotalPurchased(address user) external view returns (uint256) {
+        return totalPurchased[user];
+    }
+    
+    /**
+     * @dev 获取当前代币价格
+     */
+    function getCurrentTokenPrice() external view returns (uint256) {
+        if (address(pricingStrategy) == address(0)) return 0;
+        return pricingStrategy.getCurrentPrice();
+    }
+    
+    /**
+     * @dev 获取用户的代币价格（考虑白名单折扣）
+     */
+    function getTokenPriceForUser(address user) external view returns (uint256) {
+        if (address(pricingStrategy) == address(0)) return 0;
+        return pricingStrategy.getPriceForBuyer(user);
+    }
+    
+    /**
+     * @dev 计算指定金额可购买的代币数量
+     */
+    function calculateTokenAmount(uint256 weiAmount, address buyer) 
+        external view returns (uint256) {
+        if (address(pricingStrategy) == address(0)) return 0;
+        return pricingStrategy.calculateTokenAmount(weiAmount, buyer);
+    }
+    
+    /**
+     * @dev 检查用户是否可以购买
+     */
+    function canPurchase(address buyer, uint256 weiAmount) external view returns (bool) {
+        // 检查基本条件
+        if (paused() || 
+            (currentPhase != CrowdsalePhase.PRESALE && currentPhase != CrowdsalePhase.PUBLIC_SALE) ||
+            !isInValidTimeWindow() ||
+            weiAmount < config.minPurchase ||
+            weiAmount > config.maxPurchase ||
+            stats.totalRaised + weiAmount > config.hardCap) {
+            return false;
+        }
+        
+        // 检查购买冷却时间
+        if (block.timestamp < lastPurchaseTime[buyer] + PURCHASE_COOLDOWN) {
+            return false;
+        }
+        
+        // 预售阶段检查白名单
+        if (currentPhase == CrowdsalePhase.PRESALE && !whitelistManager.isWhitelisted(buyer)) {
+            return false;
+        }
+        
+        // 检查定价策略
+        if (address(pricingStrategy) == address(0)) {
+            return false;
+        }
+        
+        return pricingStrategy.isValidPurchase(buyer, weiAmount);
+    }
+    
+    /**
+     * @dev 获取剩余可购买代币数量（基于硬顶）
+     */
+    function getRemainingTokens() external view returns (uint256) {
+        if (stats.totalRaised >= config.hardCap) {
+            return 0;
+        }
+        
+        uint256 remainingWei = config.hardCap - stats.totalRaised;
+        if (address(pricingStrategy) == address(0)) {
+            return 0;
+        }
+        
+        // 使用当前价格估算剩余代币数量
+        uint256 currentPrice = pricingStrategy.getCurrentPrice();
+        if (currentPrice == 0) return 0;
+        
+        return (remainingWei * 1e18) / currentPrice;
+    }
+    
     // ============ Internal Functions ============
+    
+    /**
+     * @dev 处理购买逻辑
+     */
+    function _processPurchase(address buyer, uint256 weiAmount, uint256 tokenAmount) internal {
+        // 更新统计数据
+        stats.totalRaised += weiAmount;
+        stats.totalTokensSold += tokenAmount;
+        stats.totalPurchases += 1;
+        
+        // 更新参与者状态
+        if (!hasParticipated[buyer]) {
+            hasParticipated[buyer] = true;
+            stats.totalParticipants += 1;
+        }
+        
+        // 更新用户数据
+        totalPurchased[buyer] += weiAmount;
+        lastPurchaseTime[buyer] = block.timestamp;
+        
+        // 记录购买历史
+        purchaseHistory[buyer].push(PurchaseRecord({
+            weiAmount: weiAmount,
+            tokenAmount: tokenAmount,
+            price: pricingStrategy.getPriceForBuyer(buyer),
+            timestamp: block.timestamp,
+            pricingType: pricingStrategy.getPricingType(),
+            isWhitelistPurchase: whitelistManager.isWhitelisted(buyer)
+        }));
+        
+        // 铸造代币给购买者
+        token.mint(buyer, tokenAmount);
+        
+        // 检查目标达成
+        if (isSoftCapReached() && stats.totalRaised - weiAmount < config.softCap) {
+            emit CapReached("soft", config.softCap, block.timestamp);
+        }
+        if (isHardCapReached()) {
+            emit CapReached("hard", config.hardCap, block.timestamp);
+        }
+    }
     
     /**
      * @dev 改变众筹阶段
@@ -503,6 +818,24 @@ contract TokenCrowdsale is
     event FundingWalletUpdated(
         address indexed oldWallet,
         address indexed newWallet,
+        address indexed updatedBy
+    );
+    
+    /**
+     * @dev 代币购买事件
+     */
+    event TokensPurchased(
+        address indexed buyer,
+        uint256 weiAmount,
+        uint256 tokenAmount,
+        uint256 timestamp
+    );
+    
+    /**
+     * @dev 定价策略更新事件
+     */
+    event PricingStrategyUpdated(
+        address indexed newStrategy,
         address indexed updatedBy
     );
 }

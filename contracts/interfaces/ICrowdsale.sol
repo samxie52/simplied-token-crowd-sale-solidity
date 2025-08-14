@@ -38,7 +38,9 @@ interface ICrowdsale {
     struct CrowdsaleStats {
         uint256 totalRaised;         // 总筹资金额
         uint256 totalTokensSold;     // 总售出代币数量
-        uint256 participantCount;    // 参与人数
+        uint256 totalPurchases;      // 总购买次数
+        uint256 totalParticipants;   // 总参与人数
+        uint256 participantCount;    // 参与人数 (向后兼容)
         uint256 presaleRaised;       // 预售筹资金额
         uint256 publicSaleRaised;    // 公售筹资金额
     }
@@ -73,13 +75,21 @@ interface ICrowdsale {
     );
     
     /**
-     * @dev 紧急暂停事件
+     * @dev Emitted when emergency action is taken
      */
     event EmergencyAction(
-        string indexed action, // "pause" or "resume"
+        string action,
         address indexed executor,
         uint256 timestamp,
         string reason
+    );
+    
+    /**
+     * @dev Emitted when crowdsale is initialized
+     */
+    event CrowdsaleInitialized(
+        address indexed admin,
+        uint256 timestamp
     );
     
     // ============ View Functions ============
