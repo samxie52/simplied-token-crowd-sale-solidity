@@ -10,7 +10,7 @@ contract DeployToken is Script {
     string constant TOKEN_SYMBOL = "CST";
     uint256 constant MAX_SUPPLY = 1_000_000_000 * 10**18;
 
-    function fun() external{
+    function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
 

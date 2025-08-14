@@ -126,7 +126,7 @@ anvil: ## 启动本地测试网络
 .PHONY: deploy-local
 deploy-local: ## 部署到本地网络
 	@echo "$(GREEN)部署合约到本地网络...$(NC)"
-	forge script script/Deploy.s.sol:DeployScript \
+	forge script script/DeployToken.s.sol:DeployToken \
 		--rpc-url $(LOCAL_RPC) \
 		--broadcast \
 		-vvv
