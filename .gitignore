@@ -1,0 +1,106 @@
+# ========================================
+# ERC20代币众筹平台 - Git忽略文件
+# ========================================
+
+# 环境变量和敏感信息
+.env
+.env.*
+!.env.example
+secrets.json
+
+# Foundry输出目录
+out/
+cache/
+broadcast/
+
+
+# 依赖库目录（由forge管理）
+lib/
+lib
+
+# 编译缓存
+*.cache/
+cache_*
+
+# 测试覆盖率报告
+coverage/
+lcov.info
+*.lcov
+
+# 日志文件
+*.log
+logs/
+
+# 操作系统生成的文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE和编辑器文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node.js相关（如果使用）
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Python相关（如果使用Python脚本）
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+env/
+
+# 临时文件
+*.tmp
+*.temp
+temp/
+tmp/
+
+# 构建产物和报告
+gas-report.json
+gas-snapshot
+.gas-snapshot
+size-snapshot.json
+
+# 安全扫描报告
+slither-report.json
+mythx-report.json
+audit-reports/
+
+# 部署记录
+deployments/
+deployed-contracts.json
+
+# 测试产物
+test-results/
+junit.xml
+
+# 文档生成
+docs/build/
+site/
+
+# 备份文件
+*.bak
+*.backup
+
+# 压缩文件
+*.zip
+*.tar.gz
+*.rar
+
+# 本地配置文件
+local.config.js
+local.settings.json
