@@ -8,6 +8,7 @@ import "@openzeppelin/contracts/utils/Context.sol";
 import "./interfaces/ICrowdsale.sol";
 import "./interfaces/IWhitelistManager.sol";
 import "./interfaces/IPricingStrategy.sol";
+import "./interfaces/IRefundVault.sol";
 import "./CrowdsaleToken.sol";
 import "./utils/CrowdsaleConstants.sol";
 
@@ -57,6 +58,9 @@ contract TokenCrowdsale is
     
     /// @dev 定价策略合约
     IPricingStrategy public pricingStrategy;
+    
+    /// @dev 资金托管合约
+    IRefundVault public refundVault;
     
     /// @dev 用户购买记录
     mapping(address => PurchaseRecord[]) public purchaseHistory;
@@ -239,8 +243,13 @@ contract TokenCrowdsale is
         // 执行购买
         _processPurchase(buyer, weiAmount, tokenAmount);
         
-        // 转移资金到资金钱包
-        fundingWallet.transfer(weiAmount);
+        // 转移资金到托管合约
+        if (address(refundVault) != address(0)) {
+            refundVault.deposit{value: weiAmount}(buyer);
+        } else {
+            // 如果没有设置托管合约，直接转移到资金钱包
+            fundingWallet.transfer(weiAmount);
+        }
         
         emit TokensPurchased(buyer, weiAmount, tokenAmount, block.timestamp);
     }
@@ -292,11 +301,16 @@ contract TokenCrowdsale is
             // 执行购买
             _processPurchase(buyer, weiAmount, tokenAmount);
             
+            // 转移资金到托管合约
+            if (address(refundVault) != address(0)) {
+                refundVault.deposit{value: weiAmount}(buyer);
+            }
+            
             emit TokensPurchased(buyer, weiAmount, tokenAmount, block.timestamp);
         }
         
-        // 转移资金
-        if (address(this).balance > 0) {
+        // 如果没有设置托管合约，转移剩余资金到资金钱包
+        if (address(refundVault) == address(0) && address(this).balance > 0) {
             fundingWallet.transfer(address(this).balance);
         }
         
@@ -439,6 +453,17 @@ contract TokenCrowdsale is
         bool hardCapReached = isHardCapReached();
         
         require(timeExpired || hardCapReached, "TokenCrowdsale: cannot finalize yet");
+        
+        // 处理资金托管
+        if (address(refundVault) != address(0)) {
+            if (isSoftCapReached()) {
+                // 软顶达成，释放资金到资金钱包
+                refundVault.release();
+            } else {
+                // 软顶未达成，启用退款
+                refundVault.enableRefunds();
+            }
+        }
         
         _changePhase(CrowdsalePhase.FINALIZED);
     }
@@ -615,6 +640,19 @@ contract TokenCrowdsale is
     {
         pricingStrategy = IPricingStrategy(_pricingStrategy);
         emit PricingStrategyUpdated(_pricingStrategy, _msgSender());
+    }
+    
+    /**
+     * @dev 设置资金托管合约
+     */
+    function setRefundVault(address _refundVault) 
+        external 
+        onlyRole(CrowdsaleConstants.CROWDSALE_ADMIN_ROLE)
+        validAddress(_refundVault)
+        whenNotPaused
+    {
+        refundVault = IRefundVault(_refundVault);
+        emit RefundVaultUpdated(_refundVault, _msgSender());
     }
     
     // ============ Query Functions ============

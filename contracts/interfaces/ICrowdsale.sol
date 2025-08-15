@@ -92,6 +92,14 @@ interface ICrowdsale {
         uint256 timestamp
     );
     
+    /**
+     * @dev Emitted when refund vault is updated
+     */
+    event RefundVaultUpdated(
+        address indexed refundVault,
+        address indexed updatedBy
+    );
+    
     // ============ View Functions ============
     
     /**
