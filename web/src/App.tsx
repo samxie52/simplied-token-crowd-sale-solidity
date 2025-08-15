@@ -1,39 +1,18 @@
-import { Toaster } from 'react-hot-toast';
-import { Layout } from '@/components/common/Layout';
-import { Home } from '@/pages/Home';
-import '@/styles/globals.css';
+import { BrowserRouter } from 'react-router-dom';
+import { AppRouter } from './router';
+import ErrorBoundary from './components/ErrorBoundary';
+import './App.css';
+import './styles/globals.css';
 
 function App() {
   return (
-    <>
-      <Layout>
-        <Home />
-      </Layout>
-      <Toaster
-        position="top-right"
-        toastOptions={{
-          duration: 5000,
-          style: {
-            background: '#363636',
-            color: '#fff',
-          },
-          success: {
-            duration: 3000,
-            iconTheme: {
-              primary: '#10b981',
-              secondary: '#fff',
-            },
-          },
-          error: {
-            duration: 5000,
-            iconTheme: {
-              primary: '#ef4444',
-              secondary: '#fff',
-            },
-          },
-        }}
-      />
-    </>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <div className="min-h-screen bg-gray-50">
+          <AppRouter />
+        </div>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { Contract } from 'ethers';
 import { useWallet } from './useWallet';
 import { useCrowdsaleStore } from '@/stores/crowdsaleStore';
@@ -31,12 +31,18 @@ export const useCrowdsale = (crowdsaleAddress?: string) => {
     canPurchase,
   } = useCrowdsaleStore();
 
-  // Set current crowdsale
-  useEffect(() => {
-    if (crowdsaleAddress && crowdsaleAddress !== currentCrowdsale) {
-      setCurrentCrowdsale(crowdsaleAddress);
-    }
-  }, [crowdsaleAddress, currentCrowdsale, setCurrentCrowdsale]);
+  // Local state for individual crowdsale data (when not using global store)
+  const [localConfig, setLocalConfig] = useState<CrowdsaleConfig | null>(null);
+  const [localStats, setLocalStats] = useState<CrowdsaleStats | null>(null);
+  const [localPhase, setLocalPhase] = useState<CrowdsalePhase | null>(null);
+  const [localLoading, setLocalLoading] = useState(false);
+
+  // Use local state when a specific address is provided and it's different from current
+  const useLocalState = crowdsaleAddress && crowdsaleAddress !== currentCrowdsale;
+  const finalConfig = useLocalState ? localConfig : config;
+  const finalStats = useLocalState ? localStats : stats;
+  const finalPhase = useLocalState ? localPhase : phase;
+  const finalIsLoading = useLocalState ? localLoading : isLoading;
 
   // Get crowdsale contract instance
   const getCrowdsaleContract = useCallback(async (address?: string) => {
@@ -222,7 +228,7 @@ export const useCrowdsale = (crowdsaleAddress?: string) => {
     }, APP_CONFIG.REFRESH_INTERVAL);
 
     return () => clearInterval(interval);
-  }, [currentCrowdsale, fetchCrowdsaleData]);
+  }, [currentCrowdsale]);
 
   return {
     // State

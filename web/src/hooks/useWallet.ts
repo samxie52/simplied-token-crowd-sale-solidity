@@ -234,7 +234,7 @@ export const useWallet = () => {
     };
 
     autoConnect();
-  }, [isMetaMaskInstalled, connect]);
+  }, []);
 
   return {
     // State

@@ -1,5 +1,10 @@
-import { formatEther, formatUnits, parseEther, parseUnits } from 'ethers';
+import { formatEther as ethersFormatEther, formatUnits, parseEther, parseUnits } from 'ethers';
 import { FORMAT_CONFIG } from './constants';
+
+// Re-export formatEther for compatibility
+export const formatEther = (wei: string | bigint): string => {
+  return ethersFormatEther(wei);
+};
 
 // Format Wei to Ether with specified decimals
 export const formatWeiToEther = (wei: bigint, decimals: number = 4): string => {
@@ -7,7 +12,12 @@ export const formatWeiToEther = (wei: bigint, decimals: number = 4): string => {
 };
 
 // Format token amount with decimals
-export const formatTokenAmount = (amount: bigint, tokenDecimals: number = FORMAT_CONFIG.TOKEN_DECIMALS, displayDecimals: number = 2): string => {
+export const formatTokenAmount = (amount: string | bigint, tokenDecimals: number = FORMAT_CONFIG.TOKEN_DECIMALS, displayDecimals: number = 2): string => {
+  if (typeof amount === 'string') {
+    // If it's already a formatted string, just return it with proper decimals
+    const num = parseFloat(amount);
+    return isNaN(num) ? '0.00' : num.toFixed(displayDecimals);
+  }
   return Number(formatUnits(amount, tokenDecimals)).toFixed(displayDecimals);
 };
 

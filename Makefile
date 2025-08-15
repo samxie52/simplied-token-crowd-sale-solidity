@@ -124,9 +124,10 @@ anvil: ## 启动本地测试网络
 	anvil --host 0.0.0.0 --port 8545 --chain-id 31337
 
 .PHONY: deploy-local
-deploy-local: ## 部署到本地网络
-	@echo "$(GREEN)部署合约到本地网络...$(NC)"
-	forge script script/DeployToken.s.sol:DeployToken \
+deploy-local: ## 部署完整众筹系统到本地网络
+	@echo "$(GREEN)部署完整众筹系统到本地网络...$(NC)"
+	@echo "$(YELLOW)部署组件: Token + WhitelistManager + TokenCrowdsale$(NC)"
+	forge script script/DeployCrowdsale.s.sol:DeployCrowdsale \
 		--rpc-url $(LOCAL_RPC) \
 		--broadcast \
 		-vvv
