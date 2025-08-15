@@ -81,6 +81,10 @@ contract PurchaseFlowTest is Test {
         // 设置代币铸币权限
         token.grantRole(token.MINTER_ROLE(), address(crowdsale));
         
+        // 铸造代币并转移给众筹合约
+        token.mint(admin, 1000000 * 1e18); // 铸造全部供应量给admin
+        token.transfer(address(crowdsale), 500000 * 1e18); // 转移一半给众筹合约用于销售
+        
         // 部署定价策略
         fixedPricing = new FixedPricingStrategy(
             BASE_PRICE,

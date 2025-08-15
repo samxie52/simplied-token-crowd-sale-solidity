@@ -69,6 +69,8 @@ IERC20Extended {
         _grantRole(PAUSER_ROLE, admin);
         _grantRole(BURNER_ROLE, admin);
 
+        // 不在构造函数中铸造代币，保留铸造能力给后续使用
+        // 代币将在CrowdsaleFactory部署时按需铸造
 
         emit MaxSupplyUpdated(0, maxSupply_);
     }

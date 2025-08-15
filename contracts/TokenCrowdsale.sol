@@ -9,7 +9,9 @@ import "./interfaces/ICrowdsale.sol";
 import "./interfaces/IWhitelistManager.sol";
 import "./interfaces/IPricingStrategy.sol";
 import "./interfaces/IRefundVault.sol";
+import "./interfaces/ITokenVesting.sol";
 import "./CrowdsaleToken.sol";
+import "./pricing/FixedPricingStrategy.sol";
 import "./utils/CrowdsaleConstants.sol";
 
 /**
@@ -61,6 +63,20 @@ contract TokenCrowdsale is
     
     /// @dev 资金托管合约
     IRefundVault public refundVault;
+    
+    /// @dev 代币归属合约
+    ITokenVesting public vestingContract;
+    
+    /// @dev 归属配置
+    struct VestingConfig {
+        bool enabled;                    // 是否启用归属
+        uint256 cliffDuration;          // 悬崖期时长
+        uint256 vestingDuration;        // 归属期时长
+        ITokenVesting.VestingType vestingType; // 归属类型
+        uint256 immediateReleasePercentage; // 立即释放百分比 (basis points)
+    }
+    
+    VestingConfig public vestingConfig;
     
     /// @dev 用户购买记录
     mapping(address => PurchaseRecord[]) public purchaseHistory;
@@ -200,6 +216,25 @@ contract TokenCrowdsale is
         
         // 初始化时间戳
         lastConfigUpdateTime = block.timestamp;
+        
+        // 设置默认时间窗口（从当前时间开始，持续30天）
+        config.presaleStartTime = block.timestamp;
+        config.presaleEndTime = block.timestamp + 30 days;
+        config.publicSaleStartTime = block.timestamp;
+        config.publicSaleEndTime = block.timestamp + 30 days;
+        
+        // 设置默认购买限制
+        config.minPurchase = 0.01 ether;  // 最小购买0.01 ETH
+        config.maxPurchase = 1000 ether;  // 最大购买1000 ETH
+        config.softCap = 100 ether;       // 软顶100 ETH
+        config.hardCap = 1000 ether;      // 硬顶1000 ETH
+        
+        // 部署默认固定定价策略
+        pricingStrategy = new FixedPricingStrategy(
+            0.001 ether,           // basePrice: 1 ETH = 1000 tokens
+            _whitelistManager,     // whitelistManager
+            _admin                 // admin
+        );
         
         emit CrowdsaleInitialized(_admin, block.timestamp);
     }
@@ -655,6 +690,46 @@ contract TokenCrowdsale is
         emit RefundVaultUpdated(_refundVault, _msgSender());
     }
     
+    /**
+     * @dev 设置归属合约
+     */
+    function setVestingContract(address _vestingContract) 
+        external 
+        onlyRole(CrowdsaleConstants.CROWDSALE_ADMIN_ROLE)
+        validAddress(_vestingContract)
+        whenNotPaused
+    {
+        vestingContract = ITokenVesting(_vestingContract);
+        emit VestingContractUpdated(_vestingContract, _msgSender());
+    }
+    
+    /**
+     * @dev 设置归属配置
+     */
+    function setVestingConfig(
+        bool _enabled,
+        uint256 _cliffDuration,
+        uint256 _vestingDuration,
+        ITokenVesting.VestingType _vestingType,
+        uint256 _immediateReleasePercentage
+    ) 
+        external 
+        onlyRole(CrowdsaleConstants.CROWDSALE_ADMIN_ROLE)
+        whenNotPaused
+    {
+        require(_immediateReleasePercentage <= 10000, "TokenCrowdsale: invalid immediate release percentage");
+        
+        vestingConfig = VestingConfig({
+            enabled: _enabled,
+            cliffDuration: _cliffDuration,
+            vestingDuration: _vestingDuration,
+            vestingType: _vestingType,
+            immediateReleasePercentage: _immediateReleasePercentage
+        });
+        
+        emit VestingConfigUpdated(_enabled, _cliffDuration, _vestingDuration, _msgSender());
+    }
+    
     // ============ Query Functions ============
     
     /**
@@ -780,8 +855,14 @@ contract TokenCrowdsale is
             isWhitelistPurchase: whitelistManager.isWhitelisted(buyer)
         }));
         
-        // 铸造代币给购买者
-        token.mint(buyer, tokenAmount);
+        // 处理代币分发 - 区分白名单用户和普通用户
+        if (whitelistManager.isWhitelisted(buyer) && vestingConfig.enabled && address(vestingContract) != address(0)) {
+            // 白名单用户：创建归属计划
+            _createVestingSchedule(buyer, tokenAmount);
+        } else {
+            // 普通用户：直接转移代币
+            token.transfer(buyer, tokenAmount);
+        }
         
         // 检查目标达成
         if (isSoftCapReached() && stats.totalRaised - weiAmount < config.softCap) {
@@ -789,6 +870,37 @@ contract TokenCrowdsale is
         }
         if (isHardCapReached()) {
             emit CapReached("hard", config.hardCap, block.timestamp);
+        }
+    }
+    
+    /**
+     * @dev 为白名单用户创建归属计划
+     */
+    function _createVestingSchedule(address beneficiary, uint256 tokenAmount) internal {
+        // 计算立即释放的代币数量
+        uint256 immediateAmount = (tokenAmount * vestingConfig.immediateReleasePercentage) / 10000;
+        uint256 vestingAmount = tokenAmount - immediateAmount;
+        
+        // 立即转移部分代币给用户
+        if (immediateAmount > 0) {
+            token.transfer(beneficiary, immediateAmount);
+        }
+        
+        // 为剩余代币创建归属计划
+        if (vestingAmount > 0) {
+            // 先将代币转移给归属合约
+            token.transfer(address(vestingContract), vestingAmount);
+            
+            // 创建归属计划
+            vestingContract.createVestingSchedule(
+                beneficiary,
+                vestingAmount,
+                block.timestamp, // 开始时间
+                vestingConfig.cliffDuration,
+                vestingConfig.vestingDuration,
+                vestingConfig.vestingType,
+                false // 不可撤销
+            );
         }
     }
     
@@ -874,6 +986,24 @@ contract TokenCrowdsale is
      */
     event PricingStrategyUpdated(
         address indexed newStrategy,
+        address indexed updatedBy
+    );
+    
+    /**
+     * @dev 归属合约更新事件
+     */
+    event VestingContractUpdated(
+        address indexed newVestingContract,
+        address indexed updatedBy
+    );
+    
+    /**
+     * @dev 归属配置更新事件
+     */
+    event VestingConfigUpdated(
+        bool enabled,
+        uint256 cliffDuration,
+        uint256 vestingDuration,
         address indexed updatedBy
     );
 }
