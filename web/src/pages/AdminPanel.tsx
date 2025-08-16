@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ethers } from 'ethers';
 import { useWallet } from '@/hooks/useWallet';
 import { useAdminAuth } from '@/hooks/useAdminAuth';
 import { useCrowdsaleManagement } from '@/hooks/useCrowdsaleManagement';
@@ -6,6 +7,7 @@ import { useWhitelistManagement } from '@/hooks/useWhitelistManagement';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { handleContractError } from '@/utils/errorHandler';
+import { getContractABI } from '@/utils/contracts';
 import { 
   CogIcon,
   UserGroupIcon,
@@ -42,6 +44,7 @@ export const AdminPanel: React.FC = () => {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showBatchImport, setShowBatchImport] = useState(false);
   const [batchImportText, setBatchImportText] = useState('');
+  const [showCreateCrowdsale, setShowCreateCrowdsale] = useState(false);
 
   // 清除消息的函数
   const clearMessages = () => {
@@ -77,21 +80,47 @@ export const AdminPanel: React.FC = () => {
         showSuccess(`众筹已暂停 - 交易哈希: ${result.txHash}`);
       }
     } catch (error) {
-      showError(handleContractError(error));
+      setOperationError(handleContractError(error));
     } finally {
       setOperationLoading(false);
     }
   };
 
-  const handleFinalizeCrowdsale = async (crowdsaleAddress: string) => {
+  // 处理启动预售
+  const handleStartPresale = async (address: string) => {
     setOperationLoading(true);
     clearMessages();
     
     try {
-      const result = await finalizeCrowdsale(crowdsaleAddress);
-      showSuccess(`众筹已结束 - 交易哈希: ${result.txHash}`);
+      // 直接使用合约调用启动预售
+      const { getSigner } = useWallet();
+      const signer = await getSigner();
+      const abi = getContractABI('TokenCrowdsale');
+      const contract = new ethers.Contract(address, abi, signer);
+      
+      const tx = await contract.startPresale();
+      await tx.wait();
+      
+      showSuccess(`预售已启动 (交易: ${tx.hash})`);
+      // 刷新数据
+      window.location.reload();
     } catch (error) {
-      showError(handleContractError(error));
+      setOperationError(handleContractError(error));
+    } finally {
+      setOperationLoading(false);
+    }
+  };
+
+  // 处理结束众筹
+  const handleFinalizeCrowdsale = async (address: string) => {
+    setOperationLoading(true);
+    clearMessages();
+    
+    try {
+      const result = await finalizeCrowdsale(address);
+      showSuccess(`众筹已结束 (交易: ${result.txHash})`);
+    } catch (error) {
+      setOperationError(handleContractError(error));
     } finally {
       setOperationLoading(false);
     }
@@ -361,7 +390,11 @@ export const AdminPanel: React.FC = () => {
                   <ChartBarIcon className="h-5 w-5 mr-2" />
                   众筹项目管理
                 </h3>
-                <Button variant="primary" size="sm">
+                <Button 
+                  variant="primary" 
+                  size="sm"
+                  onClick={() => setShowCreateCrowdsale(true)}
+                >
                   <PlusIcon className="h-4 w-4 mr-2" />
                   创建众筹
                 </Button>
@@ -447,21 +480,24 @@ export const AdminPanel: React.FC = () => {
                         </Button>
                       )}
                       
-                      {crowdsale.status !== 'finalized' && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleFinalizeCrowdsale(crowdsale.address)}
-                          className="text-red-600 hover:text-red-700"
-                          disabled={operationLoading}
-                        >
-                          结束众筹
-                        </Button>
-                      )}
-                      
-                      <Button variant="ghost" size="sm">
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => handleStartPresale(crowdsale.address)}
+                        disabled={operationLoading || crowdsale.phase > 0}
+                      >
                         <PencilIcon className="h-4 w-4 mr-1" />
-                        编辑
+                        {crowdsale.phase === 0 ? '启动预售' : '编辑'}
+                      </Button>
+                      
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-red-600 hover:text-red-700"
+                        onClick={() => handleFinalizeCrowdsale(crowdsale.address)}
+                        disabled={operationLoading || crowdsale.status === 'finalized'}
+                      >
+                        {crowdsale.status === 'finalized' ? '已结束' : '结束众筹'}
                       </Button>
                     </div>
                   </div>
@@ -638,6 +674,93 @@ export const AdminPanel: React.FC = () => {
           </Card>
         </div>
       </div>
+
+      {/* 创建众筹模态框 */}
+      {showCreateCrowdsale && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                创建新众筹
+              </h3>
+              <button
+                onClick={() => setShowCreateCrowdsale(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  众筹名称
+                </label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                  placeholder="输入众筹项目名称"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  软顶目标 (ETH)
+                </label>
+                <input
+                  type="number"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                  placeholder="100"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  硬顶目标 (ETH)
+                </label>
+                <input
+                  type="number"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                  placeholder="1000"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  代币价格 (ETH)
+                </label>
+                <input
+                  type="number"
+                  step="0.001"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                  placeholder="0.001"
+                />
+              </div>
+            </div>
+            
+            <div className="flex space-x-3 mt-6">
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={() => setShowCreateCrowdsale(false)}
+              >
+                取消
+              </Button>
+              <Button
+                variant="primary"
+                className="flex-1"
+                onClick={() => {
+                  // TODO: 实现创建众筹逻辑
+                  showSuccess('众筹创建功能正在开发中');
+                  setShowCreateCrowdsale(false);
+                }}
+              >
+                创建
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

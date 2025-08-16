@@ -179,11 +179,11 @@ export const getContractAddress = (contractName: string): string | null => {
   const envKey = `VITE_${contractName.toUpperCase()}_ADDRESS`;
   const envAddress = import.meta.env[envKey];
   
-  console.log(`Getting contract address for ${contractName}:`, {
-    envKey,
-    envAddress,
-    allEnvVars: Object.keys(import.meta.env).filter(key => key.startsWith('VITE_'))
-  });
+  // console.log(`Getting contract address for ${contractName}:`, {
+  //   envKey,
+  //   envAddress,
+  //   allEnvVars: Object.keys(import.meta.env).filter(key => key.startsWith('VITE_'))
+  // });
   
   // 如果环境变量未设置或为空，返回null而不是抛出错误
   if (!envAddress || envAddress.trim() === '') {
