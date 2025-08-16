@@ -3,6 +3,23 @@ import { FORMAT_CONFIG } from './constants';
 
 // Re-export formatEther for compatibility
 export const formatEther = (wei: string | bigint): string => {
+  // If it's already a decimal string (contains a dot), return as is
+  if (typeof wei === 'string' && wei.includes('.')) {
+    return wei;
+  }
+  
+  // If it's a string that looks like a number but no decimal, treat as Wei
+  if (typeof wei === 'string' && !wei.startsWith('0x')) {
+    try {
+      // Try to convert to BigInt first
+      const bigIntValue = BigInt(wei);
+      return ethersFormatEther(bigIntValue);
+    } catch {
+      // If conversion fails, assume it's already formatted
+      return wei;
+    }
+  }
+  
   return ethersFormatEther(wei);
 };
 
