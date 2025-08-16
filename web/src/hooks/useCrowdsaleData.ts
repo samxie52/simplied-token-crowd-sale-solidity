@@ -26,29 +26,10 @@ export const useCrowdsaleData = (crowdsaleAddress: string) => {
       // Check if contract exists by checking if it has code
       const code = await provider.getCode(crowdsaleAddress);
       if (code === '0x') {
-        // Contract doesn't exist, use demo data
-        setConfig({
-          presaleStartTime: BigInt(Math.floor(Date.now() / 1000)),
-          presaleEndTime: BigInt(Math.floor(Date.now() / 1000) + 86400 * 7),
-          publicSaleStartTime: BigInt(Math.floor(Date.now() / 1000) + 86400 * 7),
-          publicSaleEndTime: BigInt(Math.floor(Date.now() / 1000) + 86400 * 14),
-          softCap: BigInt('1000000000000000000'), // 1 ETH
-          hardCap: BigInt('10000000000000000000'), // 10 ETH
-          minPurchase: BigInt('100000000000000000'), // 0.1 ETH
-          maxPurchase: BigInt('5000000000000000000'), // 5 ETH
-        });
-        
-        setStats({
-          totalRaised: BigInt('2500000000000000000'), // 2.5 ETH
-          totalTokensSold: BigInt('2500000000000000000000'), // 2500 tokens
-          totalPurchases: BigInt(15),
-          totalParticipants: BigInt(8),
-          participantCount: BigInt(8),
-          presaleRaised: BigInt('1500000000000000000'), // 1.5 ETH
-          publicSaleRaised: BigInt('1000000000000000000'), // 1 ETH
-        });
-        
-        setPhase(1); // PRESALE phase
+        console.warn(`No contract found at address: ${crowdsaleAddress}`);
+        setConfig(null);
+        setStats(null);
+        setPhase(null);
         return;
       }
       
@@ -86,29 +67,10 @@ export const useCrowdsaleData = (crowdsaleAddress: string) => {
       setPhase(currentPhase as CrowdsalePhase);
     } catch (error) {
       console.error('Failed to fetch crowdsale data:', error);
-      // Fallback to demo data on error
-      setConfig({
-        presaleStartTime: BigInt(Math.floor(Date.now() / 1000)),
-        presaleEndTime: BigInt(Math.floor(Date.now() / 1000) + 86400 * 7),
-        publicSaleStartTime: BigInt(Math.floor(Date.now() / 1000) + 86400 * 7),
-        publicSaleEndTime: BigInt(Math.floor(Date.now() / 1000) + 86400 * 14),
-        softCap: BigInt('1000000000000000000'),
-        hardCap: BigInt('10000000000000000000'),
-        minPurchase: BigInt('100000000000000000'),
-        maxPurchase: BigInt('5000000000000000000'),
-      });
-      
-      setStats({
-        totalRaised: BigInt('2500000000000000000'),
-        totalTokensSold: BigInt('2500000000000000000000'),
-        totalPurchases: BigInt(15),
-        totalParticipants: BigInt(8),
-        participantCount: BigInt(8),
-        presaleRaised: BigInt('1500000000000000000'),
-        publicSaleRaised: BigInt('1000000000000000000'),
-      });
-      
-      setPhase(1);
+      // Set to null on error instead of using demo data
+      setConfig(null);
+      setStats(null);
+      setPhase(null);
     } finally {
       setIsLoading(false);
     }

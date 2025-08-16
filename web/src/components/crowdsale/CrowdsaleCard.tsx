@@ -14,29 +14,29 @@ interface CrowdsaleCardProps {
 export const CrowdsaleCard: React.FC<CrowdsaleCardProps> = ({ instance, onSelect }) => {
   const { config, stats, phase } = useCrowdsaleData(instance.crowdsaleAddress);
 
-  // Use demo data if real data is not available
+  // Use real contract data or fallback to default values
   const displayConfig = config || {
     presaleStartTime: BigInt(Math.floor(Date.now() / 1000)),
     presaleEndTime: BigInt(Math.floor(Date.now() / 1000) + 86400 * 7),
     publicSaleStartTime: BigInt(Math.floor(Date.now() / 1000) + 86400 * 7),
     publicSaleEndTime: BigInt(Math.floor(Date.now() / 1000) + 86400 * 14),
-    softCap: BigInt('1000000000000000000'), // 1 ETH
-    hardCap: BigInt('10000000000000000000'), // 10 ETH
-    minPurchase: BigInt('100000000000000000'), // 0.1 ETH
-    maxPurchase: BigInt('5000000000000000000'), // 5 ETH
+    softCap: BigInt('100000000000000000000'), // 100 ETH (from deployment)
+    hardCap: BigInt('1000000000000000000000'), // 1000 ETH (from deployment)
+    minPurchase: BigInt('10000000000000000'), // 0.01 ETH (from deployment)
+    maxPurchase: BigInt('1000000000000000000000'), // 1000 ETH (from deployment)
   };
 
   const displayStats = stats || {
-    totalRaised: BigInt('2500000000000000000'), // 2.5 ETH
-    totalTokensSold: BigInt('2500000000000000000000'), // 2500 tokens
-    totalPurchases: BigInt(15),
-    totalParticipants: BigInt(8),
-    participantCount: BigInt(8),
-    presaleRaised: BigInt('1500000000000000000'), // 1.5 ETH
-    publicSaleRaised: BigInt('1000000000000000000'), // 1 ETH
+    totalRaised: BigInt('0'), // Start with 0 for new crowdsale
+    totalTokensSold: BigInt('0'), // Start with 0 for new crowdsale
+    totalPurchases: BigInt(0),
+    totalParticipants: BigInt(0),
+    participantCount: BigInt(0),
+    presaleRaised: BigInt('0'),
+    publicSaleRaised: BigInt('0'),
   };
 
-  const displayPhase = phase !== null ? phase : 1; // Default to PRESALE
+  const displayPhase = phase !== null ? phase : 0; // Default to PENDING phase
 
   const progress = calculateProgress(displayStats.totalRaised, displayConfig.hardCap);
   const remainingTime = formatTimeRemaining(
@@ -51,6 +51,7 @@ export const CrowdsaleCard: React.FC<CrowdsaleCardProps> = ({ instance, onSelect
             Token Crowdsale
           </h3>
           <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+            displayPhase === 0 ? 'bg-yellow-100 text-yellow-800' :
             displayPhase === 1 ? 'bg-blue-100 text-blue-800' :
             displayPhase === 2 ? 'bg-green-100 text-green-800' :
             displayPhase === 3 ? 'bg-gray-100 text-gray-800' :

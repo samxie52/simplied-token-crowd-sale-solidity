@@ -51,14 +51,26 @@ export const useWhitelistManagement = () => {
     try {
       const contract = await getWhitelistContract();
       
-      // 使用新的合约函数获取所有白名单用户
-      const result = await contract.getAllWhitelistUsers(0, 100); // 获取前100个用户
+      // 首先检查总用户数，避免调用空数组
+      let result;
+      try {
+        result = await contract.getAllWhitelistUsers(0, 100); // 获取前100个用户
+      } catch (contractError: any) {
+        // 如果返回空数据或解码失败，说明没有用户
+        if (contractError.code === 'BAD_DATA' || contractError.message?.includes('could not decode result data')) {
+          console.log('No whitelist users found (empty contract state)');
+          setUsers([]);
+          return;
+        }
+        throw contractError; // 重新抛出其他错误
+      }
+      
       const userAddresses = result[0];
       const total = result[1];
       
       console.log('All whitelist users:', { userAddresses, total: total.toString() });
       
-      if (userAddresses.length === 0) {
+      if (!userAddresses || userAddresses.length === 0) {
         setUsers([]);
         return;
       }

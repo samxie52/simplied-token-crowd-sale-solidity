@@ -64,6 +64,18 @@ export const formatTimestamp = (timestamp: bigint | number): string => {
   return date.toLocaleString();
 };
 
+// Format date to readable string
+export const formatDate = (date: Date | string | number): string => {
+  const dateObj = new Date(date);
+  return dateObj.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
 // Format duration in seconds to human readable
 export const formatDuration = (seconds: bigint | number): string => {
   const totalSeconds = Number(seconds);

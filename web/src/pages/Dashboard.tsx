@@ -1,106 +1,77 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useWallet } from '@/hooks/useWallet';
+import { useUserInvestments } from '@/hooks/useUserInvestments';
+import { useTokenVesting } from '@/hooks/useTokenVesting';
+import { useInvestmentStats } from '@/hooks/useInvestmentStats';
+import { useMultiCrowdsale } from '@/hooks/useMultiCrowdsale';
 import { BalanceCard } from '@/components/wallet/BalanceCard';
+import { InvestmentCard } from '@/components/dashboard/InvestmentCard';
+import { VestingProgressCard } from '@/components/dashboard/VestingProgressCard';
+import { InvestmentDetailModal } from '@/components/dashboard/InvestmentDetailModal';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { formatEther, formatTokenAmount } from '@/utils/formatters';
+import { formatTokenAmount } from '@/utils/formatters';
 import { 
   ChartBarIcon,
   CurrencyDollarIcon,
   TrophyIcon,
   ClockIcon,
-  ArrowTopRightOnSquareIcon
+  ExclamationTriangleIcon,
+  ArrowPathIcon
 } from '@heroicons/react/24/outline';
+import { UserInvestment } from '@/hooks/useUserInvestments';
+import toast from 'react-hot-toast';
 
-interface UserInvestment {
-  crowdsaleAddress: string;
-  crowdsaleName: string;
-  investedAmount: string;
-  tokenAmount: string;
-  investmentDate: number;
-  status: 'active' | 'completed' | 'refunded';
-}
-
-interface VestingSchedule {
-  scheduleId: string;
-  tokenAmount: string;
-  releasedAmount: string;
-  nextReleaseDate: number;
-  totalReleases: number;
-  completedReleases: number;
-}
 
 export const Dashboard: React.FC = () => {
-  const { isConnected, address, balance } = useWallet();
-  const [investments, setInvestments] = useState<UserInvestment[]>([]);
-  const [vestingSchedules, setVestingSchedules] = useState<VestingSchedule[]>([]);
-  const [totalStats, setTotalStats] = useState({
-    totalInvested: '0',
-    totalTokens: '0',
-    totalProfit: '0',
-    activeInvestments: 0
-  });
+  const navigate = useNavigate();
+  const { address, isConnected, balance } = useWallet();
+  const { investments, loading: investmentsLoading, error: investmentsError, refreshInvestments } = useUserInvestments(address || undefined);
+  const { vestingSchedules, loading: vestingLoading, error: vestingError, releaseTokens, batchReleaseTokens, releasing, refresh: refreshVestingSchedules } = useTokenVesting();
+  const { projects, loading: multiLoading } = useMultiCrowdsale();
+  const { stats } = useInvestmentStats(investments, vestingSchedules);
+  const [selectedInvestment, setSelectedInvestment] = useState<UserInvestment | null>(null);
+  const [selectedVestingIds, setSelectedVestingIds] = useState<string[]>([]);
 
-  useEffect(() => {
-    if (isConnected && address) {
-      // 模拟用户投资数据
-      setInvestments([
-        {
-          crowdsaleAddress: '0x1234...5678',
-          crowdsaleName: 'DeFi Token Sale',
-          investedAmount: '2.5',
-          tokenAmount: '5000',
-          investmentDate: Date.now() - 86400000 * 5,
-          status: 'active'
-        },
-        {
-          crowdsaleAddress: '0x9876...5432',
-          crowdsaleName: 'GameFi Project',
-          investedAmount: '1.0',
-          tokenAmount: '2000',
-          investmentDate: Date.now() - 86400000 * 15,
-          status: 'completed'
-        }
-      ]);
-
-      // 模拟代币释放计划
-      setVestingSchedules([
-        {
-          scheduleId: '1',
-          tokenAmount: '5000',
-          releasedAmount: '1000',
-          nextReleaseDate: Date.now() + 86400000 * 30,
-          totalReleases: 12,
-          completedReleases: 2
-        }
-      ]);
-
-      // 计算总统计
-      setTotalStats({
-        totalInvested: '3.5',
-        totalTokens: '7000',
-        totalProfit: '0.8',
-        activeInvestments: 1
-      });
+  const handleTokenRelease = async (scheduleId: string) => {
+    try {
+      await releaseTokens(scheduleId);
+    } catch (error) {
+      console.error('Token release failed:', error);
     }
-  }, [isConnected, address]);
+  };
 
-  const tokenBalances = [
-    {
-      symbol: 'DFT',
-      balance: '5000',
-      decimals: 18,
-      address: '0x1234567890123456789012345678901234567890',
-      usdValue: 150
-    },
-    {
-      symbol: 'GFT',
-      balance: '2000',
-      decimals: 18,
-      address: '0x9876543210987654321098765432109876543210',
-      usdValue: 80
+  const handleBatchRelease = async () => {
+    if (selectedVestingIds.length === 0) {
+      toast.error('请选择要释放的计划');
+      return;
     }
-  ];
+    try {
+      await batchReleaseTokens(selectedVestingIds);
+      setSelectedVestingIds([]);
+    } catch (error) {
+      console.error('Batch release failed:', error);
+    }
+  };
+
+  const handleRefreshData = async () => {
+    await refreshInvestments();
+    await refreshVestingSchedules();
+    toast.success('数据已刷新');
+  };
+
+  const handleBrowseCrowdsales = () => {
+    navigate('/');
+  };
+
+  const toggleVestingSelection = (scheduleId: string) => {
+    setSelectedVestingIds(prev => 
+      prev.includes(scheduleId) 
+        ? prev.filter(id => id !== scheduleId)
+        : [...prev, scheduleId]
+    );
+  };
 
   if (!isConnected) {
     return (
@@ -147,9 +118,9 @@ export const Dashboard: React.FC = () => {
                 <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
                   总投资
                 </p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {totalStats.totalInvested} ETH
-                </p>
+                <div className="text-2xl font-bold text-gray-900">
+                  ${parseFloat(stats.totalInvested || '0').toFixed(2)}
+                </div>
               </div>
             </div>
           </CardContent>
@@ -165,9 +136,9 @@ export const Dashboard: React.FC = () => {
                 <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
                   代币总量
                 </p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {formatTokenAmount(totalStats.totalTokens)}
-                </p>
+                <div className="text-2xl font-bold text-gray-900">
+                  {formatTokenAmount(stats.totalTokens || '0')}
+                </div>
               </div>
             </div>
           </CardContent>
@@ -183,9 +154,11 @@ export const Dashboard: React.FC = () => {
                 <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
                   预估收益
                 </p>
-                <p className="text-2xl font-bold text-green-600">
-                  +{totalStats.totalProfit} ETH
-                </p>
+                <div className="text-2xl font-bold text-gray-900">
+                  <span className={parseFloat(stats.totalProfit || '0') >= 0 ? 'text-green-600' : 'text-red-600'}>
+                    ${parseFloat(stats.totalProfit || '0') >= 0 ? '+' : ''}${parseFloat(stats.totalProfit || '0').toFixed(2)}
+                  </span>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -201,9 +174,9 @@ export const Dashboard: React.FC = () => {
                 <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
                   活跃投资
                 </p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {totalStats.activeInvestments}
-                </p>
+                <div className="text-2xl font-bold text-gray-900">
+                  {stats.activeInvestments || 0}
+                </div>
               </div>
             </div>
           </CardContent>
@@ -216,127 +189,160 @@ export const Dashboard: React.FC = () => {
           {/* 投资历史 */}
           <Card>
             <CardHeader>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                我的投资
-              </h3>
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  我的投资
+                </h3>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={handleRefreshData}
+                  disabled={investmentsLoading}
+                >
+                  <ArrowPathIcon className={`h-4 w-4 ${investmentsLoading ? 'animate-spin' : ''}`} />
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {investments.map((investment, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg"
-                  >
-                    <div className="flex items-center">
-                      <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center mr-4">
-                        <span className="text-white text-sm font-bold">
-                          {investment.crowdsaleName.slice(0, 2)}
-                        </span>
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900 dark:text-white">
-                          {investment.crowdsaleName}
-                        </p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          {new Date(investment.investmentDate).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-gray-900 dark:text-white">
-                        {investment.investedAmount} ETH
-                      </p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {formatTokenAmount(investment.tokenAmount)} 代币
-                      </p>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        investment.status === 'active' 
-                          ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                          : investment.status === 'completed'
-                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                          : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                      }`}>
-                        {investment.status === 'active' ? '进行中' : 
-                         investment.status === 'completed' ? '已完成' : '已退款'}
-                      </span>
-                      <Button variant="ghost" size="sm">
-                        <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+              {investmentsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  <span className="ml-2 text-gray-500">加载投资数据...</span>
+                </div>
+              ) : investmentsError ? (
+                <div className="text-center py-8">
+                  <ExclamationTriangleIcon className="h-12 w-12 text-red-500 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">加载失败</h3>
+                  <p className="text-gray-500 mb-4">{investmentsError}</p>
+                  <Button onClick={handleRefreshData}>重试</Button>
+                </div>
+              ) : investments.length === 0 ? (
+                <div className="text-center py-8">
+                  <ChartBarIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">暂无投资记录</h3>
+                  <p className="text-gray-500 mb-4">您还没有参与任何众筹项目</p>
+                  <Button variant="primary" onClick={handleBrowseCrowdsales}>浏览众筹项目</Button>
+                </div>
+              ) : (
+                <div className="grid gap-4">
+                  {investments.map((investment, index) => (
+                    <InvestmentCard
+                      key={`${investment.crowdsaleAddress}-${index}`}
+                      investment={investment}
+                      onClick={() => setSelectedInvestment(investment)}
+                    />
+                  ))}
+                  {investmentsError && (
+                    <Card className="p-4 border-red-200 bg-red-50">
+                      <div className="text-red-600">{investmentsError}</div>
+                      <Button 
+                        onClick={refreshInvestments}
+                        className="mt-2 bg-red-600 hover:bg-red-700"
+                        size="sm"
+                      >
+                        Retry
                       </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    </Card>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
 
           {/* 代币释放进度 */}
           <Card>
             <CardHeader>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                代币释放进度
-              </h3>
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  代币释放进度
+                </h3>
+                {vestingSchedules.length > 0 && (
+                  <div className="flex gap-2">
+                    {selectedVestingIds.length > 0 && (
+                      <Button 
+                        size="sm" 
+                        onClick={handleBatchRelease}
+                        disabled={releasing}
+                      >
+                        批量释放 ({selectedVestingIds.length})
+                      </Button>
+                    )}
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={refreshVestingSchedules}
+                      disabled={vestingLoading}
+                    >
+                      <ArrowPathIcon className={`h-4 w-4 ${vestingLoading ? 'animate-spin' : ''}`} />
+                    </Button>
+                  </div>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-6">
-                {vestingSchedules.map((schedule, index) => (
-                  <div key={index} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                    <div className="flex justify-between items-center mb-4">
-                      <div>
-                        <p className="font-medium text-gray-900 dark:text-white">
-                          释放计划 #{schedule.scheduleId}
-                        </p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          总量: {formatTokenAmount(schedule.tokenAmount)}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                          下次释放
-                        </p>
-                        <p className="font-medium text-gray-900 dark:text-white">
-                          {new Date(schedule.nextReleaseDate).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <div className="mb-4">
-                      <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
-                        <span>释放进度</span>
-                        <span>{schedule.completedReleases}/{schedule.totalReleases}</span>
-                      </div>
-                      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                        <div
-                          className="bg-blue-600 h-2 rounded-full"
-                          style={{
-                            width: `${(schedule.completedReleases / schedule.totalReleases) * 100}%`
-                          }}
+              {vestingLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  <span className="ml-2 text-gray-500">加载释放数据...</span>
+                </div>
+              ) : vestingError ? (
+                <div className="text-center py-8">
+                  <ExclamationTriangleIcon className="h-12 w-12 text-red-500 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">加载失败</h3>
+                  <p className="text-gray-500 mb-4">{vestingError}</p>
+                  <Button onClick={refreshVestingSchedules}>重试</Button>
+                </div>
+              ) : vestingSchedules.length === 0 ? (
+                <div className="text-center py-8">
+                  <ClockIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">暂无释放计划</h3>
+                  <p className="text-gray-500">您还没有任何代币释放计划</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {vestingSchedules.map((schedule) => (
+                    <div key={schedule.id} className="relative">
+                      <div className="absolute top-4 left-4 z-10">
+                        <input
+                          type="checkbox"
+                          checked={selectedVestingIds.includes(schedule.id)}
+                          onChange={() => toggleVestingSelection(schedule.id)}
+                          className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                          disabled={parseFloat(schedule.releasableAmount) === 0 || schedule.isRevoked}
                         />
                       </div>
+                      <VestingProgressCard
+                        schedule={schedule}
+                        onRelease={handleTokenRelease}
+                        releasing={releasing}
+                      />
                     </div>
-                    
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600 dark:text-gray-400">
-                        已释放: {formatTokenAmount(schedule.releasedAmount)}
-                      </span>
-                      <span className="text-gray-600 dark:text-gray-400">
-                        剩余: {formatTokenAmount((parseFloat(schedule.tokenAmount) - parseFloat(schedule.releasedAmount)).toString())}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                  {vestingError && (
+                    <Card className="p-4 border-red-200 bg-red-50">
+                      <div className="text-red-600">{vestingError}</div>
+                      <Button onClick={refreshVestingSchedules} className="mt-2 bg-red-600 hover:bg-red-700" size="sm">
+                        Retry
+                      </Button>
+                    </Card>
+                  )}
+                  {vestingSchedules.length === 0 && !vestingLoading && !vestingError && (
+                    <Card className="p-8 text-center text-gray-500">
+                      <ClockIcon className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                      <p>No vesting schedules found</p>
+                    </Card>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
 
         {/* 右侧钱包信息 */}
         <div className="space-y-6">
-          <BalanceCard
-            ethBalance={balance}
-            tokenBalances={tokenBalances}
-            totalUsdValue={230}
+          <BalanceCard 
+            ethBalance={balance || '0'}
+            tokenBalances={[]}
           />
 
           {/* 快速操作 */}
@@ -347,7 +353,7 @@ export const Dashboard: React.FC = () => {
               </h3>
             </CardHeader>
             <CardContent className="space-y-3">
-              <Button variant="primary" className="w-full">
+              <Button variant="primary" className="w-full" onClick={handleBrowseCrowdsales}>
                 浏览众筹项目
               </Button>
               <Button variant="secondary" className="w-full">
@@ -389,6 +395,13 @@ export const Dashboard: React.FC = () => {
           </Card>
         </div>
       </div>
+
+      {/* Investment Detail Modal */}
+      <InvestmentDetailModal
+        investment={selectedInvestment}
+        isOpen={!!selectedInvestment}
+        onClose={() => setSelectedInvestment(null)}
+      />
     </div>
   );
 };

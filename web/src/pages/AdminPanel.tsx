@@ -23,7 +23,7 @@ import {
 // 接口定义移到Hook文件中
 
 export const AdminPanel: React.FC = () => {
-  const { isConnected } = useWallet();
+  const { isConnected, getSigner } = useWallet();
   const { isAdmin, isOperator, loading: authLoading, error: authError } = useAdminAuth();
   const { 
     crowdsales, 
@@ -93,7 +93,6 @@ export const AdminPanel: React.FC = () => {
     
     try {
       // 直接使用合约调用启动预售
-      const { getSigner } = useWallet();
       const signer = await getSigner();
       const abi = getContractABI('TokenCrowdsale');
       const contract = new ethers.Contract(address, abi, signer);

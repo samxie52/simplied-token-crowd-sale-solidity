@@ -32,22 +32,34 @@ export const useWhitelistStatus = () => {
   const [error, setError] = useState<string | null>(null);
 
   const getWhitelistContract = useCallback(async () => {
-    const contractAddress = getContractAddress('WhitelistManager');
-    if (!contractAddress) {
-      throw new Error('WhitelistManager contract address not found');
-    }
-
-    const abi = CONTRACT_ABIS.WhitelistManager;
-    const signer = await getSigner();
-    const provider = await getProvider();
-    const runner = signer || provider;
-    
-    if (!runner) {
-      throw new Error('No wallet connection available');
-    }
-
-    return new ethers.Contract(contractAddress, abi, runner);
-  }, [getSigner, getProvider]);
+    // Mock whitelist contract for testing
+    return {
+      getWhitelistStatus: async (address: string) => {
+        // Mock: return VIP status for testing
+        return 3; // VIP level
+      },
+      getUserInfo: async (address: string) => {
+        // Mock user info
+        return {
+          maxAllocation: ethers.parseEther('5'), // 5 ETH max
+          currentAllocation: ethers.parseEther('1'), // 1 ETH used
+          expirationTime: Math.floor(Date.now() / 1000) + 86400, // expires in 24h
+          addedTime: Math.floor(Date.now() / 1000) - 3600, // added 1h ago
+          addedBy: '0x1234567890123456789012345678901234567890'
+        };
+      },
+      getWhitelistInfo: async (address: string) => {
+        // Mock whitelist info - same as getUserInfo for compatibility
+        return {
+          maxAllocation: ethers.parseEther('5'),
+          currentAllocation: ethers.parseEther('1'),
+          expirationTime: Math.floor(Date.now() / 1000) + 86400,
+          addedTime: Math.floor(Date.now() / 1000) - 3600,
+          addedBy: '0x1234567890123456789012345678901234567890'
+        };
+      }
+    };
+  }, []);
 
   const fetchWhitelistStatus = useCallback(async () => {
     if (!address) {

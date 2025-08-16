@@ -76,7 +76,7 @@ export const CrowdsaleDetail: React.FC = () => {
   }
 
   const currentTime = Math.floor(Date.now() / 1000);
-  const isActive = currentTime < parseInt(crowdsaleData.endTime);
+  const isActive = config ? currentTime < parseInt(config.publicSaleEndTime.toString()) : false;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -94,7 +94,7 @@ export const CrowdsaleDetail: React.FC = () => {
           </Button>
           <div>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-              {crowdsaleData.name || '代币众筹'}
+              Crowdsale Project
             </h1>
             <p className="text-gray-600 dark:text-gray-400 mt-1">
               {address?.slice(0, 6)}...{address?.slice(-4)}
@@ -104,74 +104,59 @@ export const CrowdsaleDetail: React.FC = () => {
         
         <div className="flex space-x-2">
           <Button variant="ghost" size="sm">
-            <BookmarkIcon className="h-4 w-4 mr-2" />
-            收藏
-          </Button>
-          <Button variant="ghost" size="sm">
-            <ShareIcon className="h-4 w-4 mr-2" />
+            <ShareIcon className="h-5 w-5" />
             分享
+          </Button>
+          <Button variant="outline" size="sm">
+            <BookmarkIcon className="h-5 w-5" />
+            收藏
           </Button>
         </div>
       </div>
 
-      {/* 主要内容区域 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* 左侧主要信息 */}
+        {/* 左侧主要内容 */}
         <div className="lg:col-span-2 space-y-6">
-          {/* 众筹统计 */}
-          <CrowdsaleStats
-            stats={stats}
-            config={config}
-          />
-
-          {/* 众筹描述 */}
+          {/* 项目描述 */}
           <Card>
             <CardHeader>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                项目介绍
-              </h3>
+              <h2 className="text-xl font-semibold">项目描述</h2>
             </CardHeader>
             <CardContent>
-              <div className="prose dark:prose-invert max-w-none">
-                <p className="text-gray-600 dark:text-gray-400">
-                  这是一个创新的代币众筹项目，旨在为投资者提供早期参与机会。
-                  项目采用多阶段销售策略，包括白名单预售和公开销售阶段。
-                </p>
-                <h4 className="text-lg font-semibold mt-6 mb-3">项目亮点</h4>
-                <ul className="list-disc list-inside space-y-2 text-gray-600 dark:text-gray-400">
-                  <li>经过安全审计的智能合约</li>
-                  <li>透明的资金托管机制</li>
-                  <li>灵活的代币释放策略</li>
-                  <li>白名单用户享受折扣优惠</li>
-                </ul>
-              </div>
+              <p className="text-gray-600 dark:text-gray-400 leading-relaxed">
+                这是一个创新的区块链项目，旨在通过去中心化的方式为用户提供更好的服务。
+                我们的团队拥有丰富的区块链开发经验，致力于构建一个安全、高效、用户友好的平台。
+              </p>
             </CardContent>
           </Card>
 
-          {/* 代币经济学 */}
+          {/* 路线图 */}
           <Card>
             <CardHeader>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                代币经济学
-              </h3>
+              <h2 className="text-xl font-semibold">项目路线图</h2>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-blue-600">1,000,000</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">总供应量</p>
+              <div className="space-y-4">
+                <div className="flex items-start space-x-3">
+                  <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
+                  <div>
+                    <h3 className="font-medium">Q1 2024 - 项目启动</h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">完成项目规划和团队组建</p>
+                  </div>
                 </div>
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-green-600">30%</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">众筹分配</p>
+                <div className="flex items-start space-x-3">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-2"></div>
+                  <div>
+                    <h3 className="font-medium">Q2 2024 - 开发阶段</h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">核心功能开发和测试</p>
+                  </div>
                 </div>
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-purple-600">20%</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">团队预留</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-orange-600">50%</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">生态发展</p>
+                <div className="flex items-start space-x-3">
+                  <div className="w-2 h-2 bg-gray-300 rounded-full mt-2"></div>
+                  <div>
+                    <h3 className="font-medium">Q3 2024 - 主网上线</h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">正式发布和社区推广</p>
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -181,39 +166,32 @@ export const CrowdsaleDetail: React.FC = () => {
         {/* 右侧操作面板 */}
         <div className="space-y-6">
           {/* 倒计时 */}
-          {isActive && (
+          {isActive && config && (
             <CountdownTimer
-              endTime={parseInt(crowdsaleData.endTime)}
+              endTime={parseInt(config.publicSaleEndTime.toString())}
               onComplete={refreshData}
             />
           )}
 
           {/* 价格显示 */}
-          <PriceDisplay
-            tokenPrice={config.tokenPrice}
-            whitelistDiscount={whitelistStatus.discount}
-            userTier={whitelistStatus.tier}
-          />
-
-          {/* 白名单状态 */}
-          {isConnected && (
-            <WhitelistStatus
-              isWhitelisted={whitelistStatus.isWhitelisted}
-              tier={whitelistStatus.tier}
-              discount={whitelistStatus.discount}
-              maxAllocation="5.0"
-              currentAllocation="1.2"
+          {config && (
+            <PriceDisplay
+              tokenPrice="0.001"
+              whitelistDiscount={whitelistStatus.discount}
+              userTier={whitelistStatus.tier}
             />
           )}
 
+          {/* 白名单状态 */}
+          {isConnected && (
+            <WhitelistStatus />
+          )}
+
           {/* 购买表单 */}
-          {isActive && (
+          {config && address && (
             <PurchaseForm
-              crowdsaleAddress={address || ''}
-              tokenPrice={config.tokenPrice}
-              minPurchase="0.01"
-              maxPurchase="10.0"
-              userWhitelistStatus={whitelistStatus}
+              crowdsaleAddress={address}
+              tokenPrice="0.001"
             />
           )}
 

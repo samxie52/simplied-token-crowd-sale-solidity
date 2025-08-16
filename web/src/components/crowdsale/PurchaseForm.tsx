@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { parseEther, formatEther } from 'ethers';
+import { formatEther } from 'ethers';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { useWallet } from '@/hooks/useWallet';
@@ -42,18 +42,23 @@ export const PurchaseForm: React.FC<PurchaseFormProps> = ({
 
   // 计算实际价格（考虑折扣）
   const actualPrice = userWhitelistStatus?.isWhitelisted 
-    ? parseFloat(formatEther(tokenPrice)) * (1 - userWhitelistStatus.discount / 100)
-    : parseFloat(formatEther(tokenPrice));
+    ? parseFloat(tokenPrice) * (1 - userWhitelistStatus.discount / 100)
+    : parseFloat(tokenPrice);
 
-  // ETH金额变化时计算代币数量
+  // ETH金额变化时计算代币数量和验证
   useEffect(() => {
     if (ethAmount && !isNaN(parseFloat(ethAmount))) {
       const tokens = parseFloat(ethAmount) / actualPrice;
       setTokenAmount(tokens.toFixed(6));
+      
+      // 实时验证
+      const validationErrors = validateInput();
+      setErrors(validationErrors);
     } else {
       setTokenAmount('');
+      setErrors([]);
     }
-  }, [ethAmount, actualPrice]);
+  }, [ethAmount, actualPrice, balance]);
 
   // 代币数量变化时计算ETH金额
   const handleTokenAmountChange = (value: string) => {
@@ -70,7 +75,8 @@ export const PurchaseForm: React.FC<PurchaseFormProps> = ({
   const validateInput = (): string[] => {
     const errors: string[] = [];
     const ethValue = parseFloat(ethAmount);
-    const userBalance = parseFloat(formatEther(balance));
+    // Balance is already in Ether format as a string, no need to format
+    const userBalance = balance ? parseFloat(balance) : 0;
 
     if (!ethAmount || ethValue <= 0) {
       errors.push('请输入有效的ETH金额');
@@ -112,7 +118,7 @@ export const PurchaseForm: React.FC<PurchaseFormProps> = ({
   const handleConfirmPurchase = async () => {
     try {
       setShowConfirmation(false);
-      await purchaseTokens(parseEther(ethAmount));
+      await purchaseTokens(ethAmount);
       
       // 重置表单
       setEthAmount('');

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Contract } from 'ethers';
 import { useWallet } from '@/hooks/useWallet';
 import { CrowdsaleCard } from '@/components/crowdsale/CrowdsaleCard';
@@ -9,6 +10,7 @@ import { CrowdsaleInstance } from '@/types/contracts';
 import { PlusIcon, ChartBarIcon, CurrencyDollarIcon, UsersIcon } from '@heroicons/react/24/outline';
 
 export const Home: React.FC = () => {
+  const navigate = useNavigate();
   const { getProvider, isConnected } = useWallet();
   const [crowdsales, setCrowdsales] = useState<CrowdsaleInstance[]>([]);
   const [loading, setLoading] = useState(false);
@@ -176,8 +178,8 @@ export const Home: React.FC = () => {
   }, [isConnected, fetchCrowdsales]);
 
   const handleSelectCrowdsale = (address: string) => {
-    // Navigate to crowdsale details (will be implemented in routing)
-    console.log('Selected crowdsale:', address);
+    // Navigate to crowdsale details page
+    navigate(`/crowdsale/${address}`);
   };
 
   return (
