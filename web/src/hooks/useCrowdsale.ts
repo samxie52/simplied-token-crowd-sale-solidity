@@ -1,10 +1,13 @@
-import { parseEther, Contract } from 'ethers';
+import { parseEther, Contract, ethers } from 'ethers';
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import { useWallet } from './useWallet';
 import { useCrowdsaleStore } from '@/stores/crowdsaleStore';
 import { useWalletStore } from '@/stores/walletStore';
 import { CrowdsaleConfig, CrowdsaleStats, CrowdsalePhase } from '@/types/contracts';
+import { getContractAddress, getContractABI } from '@/utils/contracts';
+import { handleContractError } from '@/utils/errorHandler';
+import { TransactionType, TransactionStatus } from '@/types/wallet';
 
 export const useCrowdsale = (crowdsaleAddress?: string) => {
   const { getProvider, getSigner, isConnected, address } = useWallet();
@@ -46,39 +49,14 @@ export const useCrowdsale = (crowdsaleAddress?: string) => {
     const provider = await getProvider();
     if (!provider) return null;
 
-    const contractAddress = address || currentCrowdsale;
-    if (!contractAddress) return null;
+    const contractAddress = address || currentCrowdsale || getContractAddress('TOKENCROWDSALE');
+    if (!contractAddress) {
+      console.warn('No crowdsale contract address available');
+      return null;
+    }
 
-    // For now, return a mock contract object for testing
-    return {
-      getCrowdsaleConfig: async () => [
-        BigInt(Math.floor(Date.now() / 1000) - 3600), // presaleStartTime
-        BigInt(Math.floor(Date.now() / 1000) + 3600), // presaleEndTime
-        BigInt(Math.floor(Date.now() / 1000) + 7200), // publicSaleStartTime
-        BigInt(Math.floor(Date.now() / 1000) + 10800), // publicSaleEndTime
-        BigInt('1000000000000000000'), // softCap (1 ETH)
-        BigInt('10000000000000000000'), // hardCap (10 ETH)
-        BigInt('100000000000000000'), // minPurchase (0.1 ETH)
-        BigInt('1000000000000000000'), // maxPurchase (1 ETH)
-      ],
-      getCrowdsaleStats: async () => [
-        BigInt('2000000000000000000'), // totalRaised (2 ETH)
-        BigInt('2000000000000000000000'), // totalTokensSold
-        BigInt(10), // totalPurchases
-        BigInt(5), // totalParticipants
-        BigInt(5), // participantCount
-        BigInt('1000000000000000000'), // presaleRaised
-        BigInt('1000000000000000000'), // publicSaleRaised
-      ],
-      getCurrentPhase: async () => 1, // PRESALE phase
-      whitelistManager: async () => '0x1234567890123456789012345678901234567890',
-      connect: (signer: any) => ({
-        purchaseTokens: async (options: any) => ({
-          hash: '0x' + Math.random().toString(16).substring(2),
-          wait: async () => ({ status: 1, gasUsed: BigInt(21000) })
-        })
-      })
-    };
+    const abi = getContractABI('TokenCrowdsale');
+    return new ethers.Contract(contractAddress, abi, provider);
   }, [getProvider, currentCrowdsale]);
 
   // Fetch crowdsale data
@@ -93,34 +71,40 @@ export const useCrowdsale = (crowdsaleAddress?: string) => {
     }
 
     try {
+      console.log('Fetching crowdsale data from contract...');
+      
       const [currentConfig, currentStats, currentPhase] = await Promise.all([
         contract.getCrowdsaleConfig(),
         contract.getCrowdsaleStats(),
         contract.getCurrentPhase(),
       ]);
 
-      // Parse config
+      console.log('Raw contract data:', { currentConfig, currentStats, currentPhase });
+
+      // Parse config - ethers v6 returns struct objects directly
       const parsedConfig: CrowdsaleConfig = {
-        presaleStartTime: currentConfig[0],
-        presaleEndTime: currentConfig[1],
-        publicSaleStartTime: currentConfig[2],
-        publicSaleEndTime: currentConfig[3],
-        softCap: currentConfig[4],
-        hardCap: currentConfig[5],
-        minPurchase: currentConfig[6],
-        maxPurchase: currentConfig[7],
+        presaleStartTime: BigInt(currentConfig.presaleStartTime.toString()),
+        presaleEndTime: BigInt(currentConfig.presaleEndTime.toString()),
+        publicSaleStartTime: BigInt(currentConfig.publicSaleStartTime.toString()),
+        publicSaleEndTime: BigInt(currentConfig.publicSaleEndTime.toString()),
+        softCap: BigInt(currentConfig.softCap.toString()),
+        hardCap: BigInt(currentConfig.hardCap.toString()),
+        minPurchase: BigInt(currentConfig.minPurchase.toString()),
+        maxPurchase: BigInt(currentConfig.maxPurchase.toString()),
       };
 
-      // Parse stats
+      // Parse stats - ethers v6 returns struct objects directly
       const parsedStats: CrowdsaleStats = {
-        totalRaised: currentStats[0],
-        totalTokensSold: currentStats[1],
-        totalPurchases: currentStats[2],
-        totalParticipants: currentStats[3],
-        participantCount: currentStats[4],
-        presaleRaised: currentStats[5],
-        publicSaleRaised: currentStats[6],
+        totalRaised: BigInt(currentStats.totalRaised.toString()),
+        totalTokensSold: BigInt(currentStats.totalTokensSold.toString()),
+        totalPurchases: BigInt(currentStats.totalPurchases.toString()),
+        totalParticipants: BigInt(currentStats.totalParticipants.toString()),
+        participantCount: BigInt(currentStats.participantCount.toString()),
+        presaleRaised: BigInt(currentStats.presaleRaised.toString()),
+        publicSaleRaised: BigInt(currentStats.publicSaleRaised.toString()),
       };
+
+      console.log('Parsed data:', { parsedConfig, parsedStats, currentPhase });
 
       if (useLocalState) {
         setLocalConfig(parsedConfig);
@@ -133,7 +117,7 @@ export const useCrowdsale = (crowdsaleAddress?: string) => {
       }
     } catch (error) {
       console.error('Failed to fetch crowdsale data:', error);
-      toast.error('Failed to load crowdsale data');
+      toast.error('加载众筹数据失败: ' + handleContractError(error));
     } finally {
       if (useLocalState) {
         setLocalLoading(false);
@@ -141,7 +125,7 @@ export const useCrowdsale = (crowdsaleAddress?: string) => {
         setLoading(false);
       }
     }
-  }, [getCrowdsaleContract, setLoading, setConfig, setStats, setPhase]);
+  }, [getCrowdsaleContract, setLoading, setConfig, setStats, setPhase, useLocalState]);
 
   // Purchase tokens
   const purchaseTokens = useCallback(async (amount: string) => {
@@ -150,6 +134,13 @@ export const useCrowdsale = (crowdsaleAddress?: string) => {
     if (!isConnected || !address) {
       console.log('Wallet not connected');
       toast.error('请先连接钱包');
+      return;
+    }
+
+    // Validate input amount
+    if (!amount || amount.trim() === '' || isNaN(Number(amount)) || Number(amount) <= 0) {
+      console.log('Invalid amount provided:', amount);
+      toast.error('请输入有效的购买金额');
       return;
     }
 
@@ -174,15 +165,34 @@ export const useCrowdsale = (crowdsaleAddress?: string) => {
     const isActivePhase = currentPhase === CrowdsalePhase.PRESALE || currentPhase === CrowdsalePhase.PUBLIC_SALE;
     const hasNotReachedHardCap = currentStats.totalRaised < currentConfig.hardCap;
     
+    // Check if purchase amount would exceed hard cap
+    const weiAmount = parseEther(amount);
+    const wouldExceedHardCap = currentStats.totalRaised + weiAmount > currentConfig.hardCap;
+    
     if (!isActivePhase) {
       console.log('Cannot purchase - not in active phase:', currentPhase);
       toast.error('众筹未激活或已结束');
       return;
     }
     
-    if (!hasNotReachedHardCap) {
-      console.log('Cannot purchase - hard cap reached');
-      toast.error('众筹已达到硬顶，无法继续购买');
+    if (!hasNotReachedHardCap || wouldExceedHardCap) {
+      console.log('Cannot purchase - hard cap reached or would be exceeded');
+      toast.error('众筹已达到硬顶或购买金额将超过硬顶限制');
+      return;
+    }
+    
+    // Validate purchase amount against min/max limits
+    if (weiAmount < currentConfig.minPurchase) {
+      console.log('Purchase amount below minimum:', amount);
+      const minEth = ethers.formatEther(currentConfig.minPurchase);
+      toast.error(`购买金额不能低于最小限制: ${minEth} ETH`);
+      return;
+    }
+    
+    if (weiAmount > currentConfig.maxPurchase) {
+      console.log('Purchase amount above maximum:', amount);
+      const maxEth = ethers.formatEther(currentConfig.maxPurchase);
+      toast.error(`购买金额不能超过最大限制: ${maxEth} ETH`);
       return;
     }
 
@@ -192,7 +202,7 @@ export const useCrowdsale = (crowdsaleAddress?: string) => {
     
     if (!signer || !contract) {
       console.log('Failed to get signer or contract');
-      toast.error('Failed to get contract instance');
+      toast.error('获取合约实例失败');
       return;
     }
 
@@ -200,38 +210,81 @@ export const useCrowdsale = (crowdsaleAddress?: string) => {
     setPurchasing(true);
 
     try {
-      const contractWithSigner = contract.connect(signer);
-      const tx = await (contractWithSigner as any).purchaseTokens({
-        value: parseEther(amount),
-      }) as any;
+      // Use the already calculated weiAmount from validation above
+      const canPurchaseResult = await contract.canPurchase(address, weiAmount);
+      
+      if (!canPurchaseResult) {
+        toast.error('购买验证失败，请检查购买条件');
+        return;
+      }
 
-      // Add transaction to store (simplified)
+      const contractWithSigner = contract.connect(signer);
+      
+      // Call purchaseTokens function with ETH value
+      const tx = await contractWithSigner.purchaseTokens({
+        value: weiAmount,
+        gasLimit: 300000 // Set reasonable gas limit
+      });
+
+      // Add transaction to store
+      addTransaction({
+        hash: tx.hash,
+        type: TransactionType.TOKEN_PURCHASE,
+        status: TransactionStatus.PENDING,
+        amount: amount,
+        timestamp: Date.now()
+      });
+      
       console.log('Transaction sent:', tx.hash);
-      toast.success('交易已发送');
+      toast.success('交易已发送，等待确认...');
 
       // Wait for confirmation
       const receipt = await tx.wait();
 
       if (receipt?.status === 1) {
         console.log('Transaction confirmed');
-        toast.success('购买成功！');
+        
+        // Update transaction status
+        updateTransaction(tx.hash, {
+          status: TransactionStatus.SUCCESS,
+          gasUsed: receipt.gasUsed?.toString()
+        });
+        
+        toast.success('购买成功！代币已发送到您的钱包');
         
         // Refresh data
-        await fetchCrowdsaleData();
+        await fetchCrowdsaleData(crowdsaleAddress);
       } else {
         console.log('Transaction failed');
+        updateTransaction(tx.hash, {
+          status: TransactionStatus.FAILED
+        });
         toast.error('交易失败');
       }
     } catch (error: any) {
       console.error('Purchase failed:', error);
       
-      let errorMessage: string = '交易失败';
+      let errorMessage = handleContractError(error);
+      
+      // Handle specific error cases
       if (error.message?.includes('insufficient funds')) {
-        errorMessage = '余额不足';
+        errorMessage = '余额不足，请检查您的ETH余额';
       } else if (error.message?.includes('not whitelisted')) {
-        errorMessage = '未通过白名单验证';
+        errorMessage = '预售阶段需要白名单权限';
       } else if (error.message?.includes('hard cap')) {
-        errorMessage = '已达到硬顶';
+        errorMessage = '已达到硬顶，无法继续购买';
+      } else if (error.message?.includes('exceeds hard cap')) {
+        errorMessage = '购买金额超过硬顶限制';
+      } else if (error.message?.includes('invalid purchase')) {
+        errorMessage = '购买金额不符合要求';
+      } else if (error.message?.includes('user rejected') || error.code === 'ACTION_REJECTED') {
+        errorMessage = '用户取消了交易';
+      } else if (error.message?.includes('purchase cooldown')) {
+        errorMessage = '购买冷却时间未到，请稍后再试';
+      } else if (error.message?.includes('sale not active')) {
+        errorMessage = '众筹销售未激活';
+      } else if (error.message?.includes('paused')) {
+        errorMessage = '众筹已暂停';
       }
       
       toast.error(errorMessage);
@@ -241,10 +294,16 @@ export const useCrowdsale = (crowdsaleAddress?: string) => {
   }, [
     isConnected,
     address,
-    canPurchase,
+    useLocalState,
+    localPhase,
+    localStats,
+    localConfig,
+    phase,
+    stats,
+    config,
     getSigner,
     getCrowdsaleContract,
-    currentCrowdsale,
+    crowdsaleAddress,
     setPurchasing,
     addTransaction,
     updateTransaction,
@@ -254,25 +313,34 @@ export const useCrowdsale = (crowdsaleAddress?: string) => {
   // Check if user is whitelisted
   const checkWhitelistStatus = useCallback(async (userAddress?: string) => {
     const contract = await getCrowdsaleContract();
-    if (!contract) return false;
+    if (!contract) return { isWhitelisted: false, tier: 'NONE' as const, discount: 0 };
 
     try {
       const whitelistManagerAddress = await contract.whitelistManager();
       const provider = await getProvider();
-      if (!provider) return false;
+      if (!provider) return { isWhitelisted: false, tier: 'NONE' as const, discount: 0 };
 
-      // Mock whitelist contract for testing
-      const whitelistContract = {
-        isWhitelisted: async () => true
-      };
+      const whitelistABI = getContractABI('WhitelistManager');
+      const whitelistContract = new ethers.Contract(whitelistManagerAddress, whitelistABI, provider);
 
       const targetAddress = userAddress || address;
-      if (!targetAddress) return false;
+      if (!targetAddress) return { isWhitelisted: false, tier: 'NONE' as const, discount: 0 };
 
-      return await whitelistContract.isWhitelisted(targetAddress);
+      const [isWhitelisted, isVIP] = await Promise.all([
+        whitelistContract.isWhitelisted(targetAddress),
+        whitelistContract.isVIP(targetAddress)
+      ]);
+
+      if (isVIP) {
+        return { isWhitelisted: true, tier: 'VIP' as const, discount: 20 };
+      } else if (isWhitelisted) {
+        return { isWhitelisted: true, tier: 'WHITELISTED' as const, discount: 10 };
+      } else {
+        return { isWhitelisted: false, tier: 'NONE' as const, discount: 0 };
+      }
     } catch (error) {
       console.error('Failed to check whitelist status:', error);
-      return false;
+      return { isWhitelisted: false, tier: 'NONE' as const, discount: 0 };
     }
   }, [getCrowdsaleContract, getProvider, address]);
 
