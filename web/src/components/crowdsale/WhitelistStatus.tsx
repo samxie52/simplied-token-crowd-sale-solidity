@@ -6,24 +6,58 @@ import {
   StarIcon,
   UserGroupIcon 
 } from '@heroicons/react/24/outline';
+import { useWhitelistStatus } from '../../hooks/useWhitelistStatus';
 
 interface WhitelistStatusProps {
-  isWhitelisted: boolean;
-  tier: 'VIP' | 'WHITELISTED' | 'NONE';
-  discount: number;
-  maxAllocation?: string;
-  currentAllocation?: string;
   className?: string;
 }
 
 export const WhitelistStatus: React.FC<WhitelistStatusProps> = ({
-  isWhitelisted,
-  tier,
-  discount,
-  maxAllocation,
-  currentAllocation,
   className = ''
 }) => {
+  const { status, loading, error } = useWhitelistStatus();
+  
+  if (loading) {
+    return (
+      <Card className={`bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 border ${className}`}>
+        <CardContent className="p-4">
+          <div className="flex items-center">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900 mr-3"></div>
+            <div>
+              <p className="font-medium text-gray-700 dark:text-gray-300">
+                加载中...
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                正在获取白名单状态
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card className={`bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 border ${className}`}>
+        <CardContent className="p-4">
+          <div className="flex items-center">
+            <XCircleIcon className="h-6 w-6 text-red-400 mr-3" />
+            <div>
+              <p className="font-medium text-red-700 dark:text-red-300">
+                加载失败
+              </p>
+              <p className="text-sm text-red-500 dark:text-red-400">
+                {error}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const { isWhitelisted, tier, discount, maxAllocation, currentAllocation } = status;
   const getTierInfo = () => {
     switch (tier) {
       case 'VIP':

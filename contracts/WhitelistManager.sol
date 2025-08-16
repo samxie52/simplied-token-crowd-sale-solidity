@@ -34,6 +34,10 @@ contract WhitelistManager is
     // 用户白名单信息映射
     mapping(address => WhitelistInfo) private _whitelistInfo;
     
+    // 用户地址数组（用于遍历）
+    address[] private _allUsers;
+    mapping(address => uint256) private _userIndex; // 用户地址在数组中的索引
+    
     // 统计信息
     uint256 public totalUsers;
     uint256 public vipCount;
@@ -340,6 +344,112 @@ contract WhitelistManager is
         return (vipCount, whitelistedCount, blacklistedCount, totalUsers);
     }
     
+    /**
+     * @dev 获取所有白名单用户地址（分页）
+     * @param offset 起始索引
+     * @param limit 返回数量限制
+     * @return users 用户地址数组
+     * @return total 总用户数
+     */
+    function getAllWhitelistUsers(uint256 offset, uint256 limit) 
+        external 
+        view 
+        returns (address[] memory users, uint256 total) 
+    {
+        total = _allUsers.length;
+        
+        if (offset >= total) {
+            return (new address[](0), total);
+        }
+        
+        uint256 end = offset + limit;
+        if (end > total) {
+            end = total;
+        }
+        
+        uint256 length = end - offset;
+        users = new address[](length);
+        
+        for (uint256 i = 0; i < length; i++) {
+            users[i] = _allUsers[offset + i];
+        }
+        
+        return (users, total);
+    }
+    
+    /**
+     * @dev 按级别获取白名单用户（分页）
+     * @param level 白名单级别
+     * @param offset 起始索引
+     * @param limit 返回数量限制
+     * @return users 用户地址数组
+     * @return infos 用户信息数组
+     */
+    function getUsersByLevel(WhitelistLevel level, uint256 offset, uint256 limit)
+        external
+        view
+        returns (address[] memory users, WhitelistInfo[] memory infos)
+    {
+        // 先计算符合条件的用户数量
+        uint256 matchCount = 0;
+        for (uint256 i = 0; i < _allUsers.length; i++) {
+            if (_getEffectiveLevel(_allUsers[i]) == level) {
+                matchCount++;
+            }
+        }
+        
+        if (offset >= matchCount) {
+            return (new address[](0), new WhitelistInfo[](0));
+        }
+        
+        uint256 end = offset + limit;
+        if (end > matchCount) {
+            end = matchCount;
+        }
+        
+        uint256 length = end - offset;
+        users = new address[](length);
+        infos = new WhitelistInfo[](length);
+        
+        uint256 currentIndex = 0;
+        uint256 resultIndex = 0;
+        
+        for (uint256 i = 0; i < _allUsers.length && resultIndex < length; i++) {
+            if (_getEffectiveLevel(_allUsers[i]) == level) {
+                if (currentIndex >= offset) {
+                    users[resultIndex] = _allUsers[i];
+                    infos[resultIndex] = _whitelistInfo[_allUsers[i]];
+                    resultIndex++;
+                }
+                currentIndex++;
+            }
+        }
+        
+        return (users, infos);
+    }
+    
+    /**
+     * @dev 批量获取用户白名单信息
+     * @param userAddresses 用户地址数组
+     * @return infos 用户信息数组
+     * @return levels 有效级别数组
+     */
+    function getBatchWhitelistInfo(address[] calldata userAddresses)
+        external
+        view
+        returns (WhitelistInfo[] memory infos, WhitelistLevel[] memory levels)
+    {
+        infos = new WhitelistInfo[](userAddresses.length);
+        levels = new WhitelistLevel[](userAddresses.length);
+        
+        for (uint256 i = 0; i < userAddresses.length; i++) {
+            infos[i] = _whitelistInfo[userAddresses[i]];
+            levels[i] = _getEffectiveLevel(userAddresses[i]);
+        }
+        
+        return (infos, levels);
+    }
+    
     // ============ 管理功能实现 ============
     
     /**
@@ -414,6 +524,9 @@ contract WhitelistManager is
             }
             _updateStats(currentInfo.level, false);
         } else {
+            // 新用户，添加到数组
+            _userIndex[user] = _allUsers.length;
+            _allUsers.push(user);
             totalUsers++;
         }
         
@@ -440,6 +553,19 @@ contract WhitelistManager is
         // 检查用户是否真的存在（通过addedTime判断）
         if (info.addedTime != 0) {
             WhitelistLevel previousLevel = info.level;
+            
+            // 从数组中移除用户
+            uint256 index = _userIndex[user];
+            uint256 lastIndex = _allUsers.length - 1;
+            
+            if (index != lastIndex) {
+                address lastUser = _allUsers[lastIndex];
+                _allUsers[index] = lastUser;
+                _userIndex[lastUser] = index;
+            }
+            
+            _allUsers.pop();
+            delete _userIndex[user];
             
             // 清除用户信息
             delete _whitelistInfo[user];

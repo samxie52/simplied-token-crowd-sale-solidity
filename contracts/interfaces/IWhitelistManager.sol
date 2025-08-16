@@ -221,4 +221,42 @@ interface IWhitelistManager {
      * @return 是否暂停
      */
     function paused() external view returns (bool);
+    
+    // ============ 新增查询接口 ============
+    
+    /**
+     * @dev 获取所有白名单用户地址（分页）
+     * @param offset 起始索引
+     * @param limit 返回数量限制
+     * @return users 用户地址数组
+     * @return total 总用户数
+     */
+    function getAllWhitelistUsers(uint256 offset, uint256 limit) 
+        external 
+        view 
+        returns (address[] memory users, uint256 total);
+    
+    /**
+     * @dev 按级别获取白名单用户（分页）
+     * @param level 白名单级别
+     * @param offset 起始索引
+     * @param limit 返回数量限制
+     * @return users 用户地址数组
+     * @return infos 用户信息数组
+     */
+    function getUsersByLevel(WhitelistLevel level, uint256 offset, uint256 limit)
+        external
+        view
+        returns (address[] memory users, WhitelistInfo[] memory infos);
+    
+    /**
+     * @dev 批量获取用户白名单信息
+     * @param userAddresses 用户地址数组
+     * @return infos 用户信息数组
+     * @return levels 有效级别数组
+     */
+    function getBatchWhitelistInfo(address[] calldata userAddresses)
+        external
+        view
+        returns (WhitelistInfo[] memory infos, WhitelistLevel[] memory levels);
 }

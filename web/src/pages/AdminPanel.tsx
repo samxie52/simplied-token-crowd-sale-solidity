@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useWallet } from '@/hooks/useWallet';
+import { useAdminAuth } from '@/hooks/useAdminAuth';
+import { useCrowdsaleManagement } from '@/hooks/useCrowdsaleManagement';
+import { useWhitelistManagement } from '@/hooks/useWhitelistManagement';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { formatTokenAmount } from '@/utils/formatters';
+import { handleContractError } from '@/utils/errorHandler';
 import { 
   CogIcon,
   UserGroupIcon,
@@ -15,117 +18,187 @@ import {
   PauseIcon
 } from '@heroicons/react/24/outline';
 
-interface CrowdsaleManagement {
-  address: string;
-  name: string;
-  status: 'active' | 'paused' | 'finalized';
-  raised: string;
-  target: string;
-  participants: number;
-  endTime: number;
-}
-
-interface WhitelistUser {
-  address: string;
-  tier: 'VIP' | 'WHITELISTED';
-  allocation: string;
-  used: string;
-  addedDate: number;
-}
+// 接口定义移到Hook文件中
 
 export const AdminPanel: React.FC = () => {
-  const { isConnected, address } = useWallet();
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [crowdsales, setCrowdsales] = useState<CrowdsaleManagement[]>([]);
-  const [whitelistUsers, setWhitelistUsers] = useState<WhitelistUser[]>([]);
-  const [selectedCrowdsale, setSelectedCrowdsale] = useState<string>('');
+  const { isConnected } = useWallet();
+  const { isAdmin, isOperator, loading: authLoading, error: authError } = useAdminAuth();
+  const { 
+    crowdsales, 
+    pauseCrowdsale,
+    resumeCrowdsale,
+    finalizeCrowdsale
+  } = useCrowdsaleManagement();
+  const {
+    users: whitelistUsers,
+    addWhitelistUser,
+    removeWhitelistUser
+  } = useWhitelistManagement();
+  
   const [newUserAddress, setNewUserAddress] = useState('');
   const [newUserTier, setNewUserTier] = useState<'VIP' | 'WHITELISTED'>('WHITELISTED');
-  const [newUserAllocation, setNewUserAllocation] = useState('');
+  const [operationLoading, setOperationLoading] = useState(false);
+  const [operationError, setOperationError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [showBatchImport, setShowBatchImport] = useState(false);
+  const [batchImportText, setBatchImportText] = useState('');
 
-  useEffect(() => {
-    if (isConnected && address) {
-      // 模拟管理员权限检查
-      setIsAdmin(address.toLowerCase().includes('admin') || Math.random() > 0.7);
-      
-      // 模拟众筹数据
-      setCrowdsales([
-        {
-          address: '0x1234567890123456789012345678901234567890',
-          name: 'DeFi Token Sale',
-          status: 'active',
-          raised: '150.5',
-          target: '500.0',
-          participants: 234,
-          endTime: Date.now() + 86400000 * 7
-        },
-        {
-          address: '0x9876543210987654321098765432109876543210',
-          name: 'GameFi Project',
-          status: 'paused',
-          raised: '89.2',
-          target: '200.0',
-          participants: 156,
-          endTime: Date.now() + 86400000 * 14
-        }
-      ]);
+  // 清除消息的函数
+  const clearMessages = () => {
+    setOperationError(null);
+    setSuccessMessage(null);
+  };
 
-      // 模拟白名单用户数据
-      setWhitelistUsers([
-        {
-          address: '0x1111222233334444555566667777888899990000',
-          tier: 'VIP',
-          allocation: '10.0',
-          used: '2.5',
-          addedDate: Date.now() - 86400000 * 3
-        },
-        {
-          address: '0x2222333344445555666677778888999900001111',
-          tier: 'WHITELISTED',
-          allocation: '5.0',
-          used: '1.0',
-          addedDate: Date.now() - 86400000 * 5
-        }
-      ]);
-    }
-  }, [isConnected, address]);
+  // 显示成功消息
+  const showSuccess = (message: string) => {
+    setSuccessMessage(message);
+    setTimeout(() => setSuccessMessage(null), 5000);
+  };
+
+  // 显示错误消息
+  const showError = (message: string) => {
+    setOperationError(message);
+    setTimeout(() => setOperationError(null), 8000);
+  };
 
   const handlePauseCrowdsale = async (crowdsaleAddress: string) => {
-    // 实际应用中调用合约方法
-    setCrowdsales(prev => prev.map(cs => 
-      cs.address === crowdsaleAddress 
-        ? { ...cs, status: cs.status === 'active' ? 'paused' : 'active' }
-        : cs
-    ));
+    setOperationLoading(true);
+    clearMessages();
+    
+    try {
+      const crowdsale = crowdsales.find(cs => cs.address === crowdsaleAddress);
+      if (!crowdsale) return;
+      
+      if (crowdsale.isPaused) {
+        const result = await resumeCrowdsale(crowdsaleAddress);
+        showSuccess(`众筹已恢复 - 交易哈希: ${result.txHash}`);
+      } else {
+        const result = await pauseCrowdsale(crowdsaleAddress);
+        showSuccess(`众筹已暂停 - 交易哈希: ${result.txHash}`);
+      }
+    } catch (error) {
+      showError(handleContractError(error));
+    } finally {
+      setOperationLoading(false);
+    }
   };
 
   const handleFinalizeCrowdsale = async (crowdsaleAddress: string) => {
-    // 实际应用中调用合约方法
-    setCrowdsales(prev => prev.map(cs => 
-      cs.address === crowdsaleAddress 
-        ? { ...cs, status: 'finalized' }
-        : cs
-    ));
+    setOperationLoading(true);
+    clearMessages();
+    
+    try {
+      const result = await finalizeCrowdsale(crowdsaleAddress);
+      showSuccess(`众筹已结束 - 交易哈希: ${result.txHash}`);
+    } catch (error) {
+      showError(handleContractError(error));
+    } finally {
+      setOperationLoading(false);
+    }
   };
 
   const handleAddWhitelistUser = async () => {
-    if (!newUserAddress || !newUserAllocation) return;
+    if (!newUserAddress.trim()) {
+      showError('请输入有效的用户地址');
+      return;
+    }
 
-    const newUser: WhitelistUser = {
-      address: newUserAddress,
-      tier: newUserTier,
-      allocation: newUserAllocation,
-      used: '0',
-      addedDate: Date.now()
-    };
-
-    setWhitelistUsers(prev => [...prev, newUser]);
-    setNewUserAddress('');
-    setNewUserAllocation('');
+    setOperationLoading(true);
+    clearMessages();
+    
+    try {
+      const result = await addWhitelistUser({ 
+        address: newUserAddress.trim(), 
+        tier: newUserTier 
+      });
+      showSuccess(`用户已添加到白名单 - 交易哈希: ${result.txHash}`);
+      setNewUserAddress('');
+    } catch (error) {
+      showError(handleContractError(error));
+    } finally {
+      setOperationLoading(false);
+    }
   };
 
   const handleRemoveWhitelistUser = async (userAddress: string) => {
-    setWhitelistUsers(prev => prev.filter(user => user.address !== userAddress));
+    setOperationLoading(true);
+    clearMessages();
+    
+    try {
+      const result = await removeWhitelistUser(userAddress);
+      showSuccess(`用户已从白名单移除 - 交易哈希: ${result.txHash}`);
+    } catch (error) {
+      showError(handleContractError(error));
+    } finally {
+      setOperationLoading(false);
+    }
+  };
+
+  const handleBatchImport = async () => {
+    if (!batchImportText.trim()) {
+      showError('请输入批量导入数据');
+      return;
+    }
+
+    setOperationLoading(true);
+    clearMessages();
+
+    try {
+      // 解析批量导入文本
+      const lines = batchImportText.trim().split('\n');
+      const users: Array<{ address: string; tier: 'VIP' | 'WHITELISTED' }> = [];
+      
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (!trimmedLine) continue;
+        
+        const parts = trimmedLine.split(',').map(p => p.trim());
+        if (parts.length < 1) continue;
+        
+        const address = parts[0];
+        const tier = parts[1]?.toUpperCase() === 'VIP' ? 'VIP' : 'WHITELISTED';
+        
+        // 验证地址格式
+        if (!address.startsWith('0x') || address.length !== 42) {
+          showError(`无效的地址格式: ${address}`);
+          return;
+        }
+        
+        users.push({ address, tier });
+      }
+
+      if (users.length === 0) {
+        showError('没有找到有效的用户数据');
+        return;
+      }
+
+      // 逐个添加用户
+      let successCount = 0;
+      let errorCount = 0;
+      
+      for (const user of users) {
+        try {
+          await addWhitelistUser(user);
+          successCount++;
+        } catch (error) {
+          console.error(`Failed to add user ${user.address}:`, error);
+          errorCount++;
+        }
+      }
+
+      if (successCount > 0) {
+        showSuccess(`批量导入完成: ${successCount} 个用户成功添加${errorCount > 0 ? `, ${errorCount} 个失败` : ''}`);
+      } else {
+        showError('批量导入失败，没有用户被添加');
+      }
+      
+      setBatchImportText('');
+      setShowBatchImport(false);
+    } catch (error) {
+      showError(handleContractError(error));
+    } finally {
+      setOperationLoading(false);
+    }
   };
 
   if (!isConnected) {
@@ -149,7 +222,25 @@ export const AdminPanel: React.FC = () => {
     );
   }
 
-  if (!isAdmin) {
+  if (authLoading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <Card className="max-w-md mx-auto">
+          <CardContent className="p-8 text-center">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+              验证权限中...
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400">
+              正在检查管理员权限
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!isAdmin && !isOperator) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Card className="max-w-md mx-auto">
@@ -161,6 +252,11 @@ export const AdminPanel: React.FC = () => {
             <p className="text-gray-600 dark:text-gray-400 mb-6">
               您没有管理员权限访问此页面
             </p>
+            {authError && (
+              <p className="text-red-600 text-sm mb-4">
+                错误: {authError}
+              </p>
+            )}
             <Button variant="secondary" onClick={() => window.history.back()}>
               返回
             </Button>
@@ -182,6 +278,78 @@ export const AdminPanel: React.FC = () => {
           管理众筹项目和白名单用户
         </p>
       </div>
+
+      {/* 状态消息 */}
+      {successMessage && (
+        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+          <p className="text-green-800">{successMessage}</p>
+        </div>
+      )}
+      
+      {operationError && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-red-800">{operationError}</p>
+        </div>
+      )}
+
+      {/* 批量导入模态框 */}
+      {showBatchImport && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-2xl mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                批量导入白名单用户
+              </h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowBatchImport(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </Button>
+            </div>
+            
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                请输入用户地址，每行一个。格式：地址,层级（可选，默认为WHITELISTED）
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-500 mb-3">
+                示例：<br/>
+                0x1234567890123456789012345678901234567890,VIP<br/>
+                0x0987654321098765432109876543210987654321,WHITELISTED<br/>
+                0x1111111111111111111111111111111111111111
+              </p>
+              <textarea
+                value={batchImportText}
+                onChange={(e) => setBatchImportText(e.target.value)}
+                placeholder="0x1234567890123456789012345678901234567890,VIP
+0x0987654321098765432109876543210987654321,WHITELISTED
+0x1111111111111111111111111111111111111111"
+                className="w-full h-32 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none"
+              />
+            </div>
+            
+            <div className="flex space-x-3">
+              <Button
+                variant="primary"
+                onClick={handleBatchImport}
+                disabled={operationLoading || !batchImportText.trim()}
+                className="flex-1"
+              >
+                {operationLoading ? '导入中...' : '开始导入'}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setShowBatchImport(false)}
+                disabled={operationLoading}
+              >
+                取消
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* 众筹管理 */}
@@ -263,6 +431,7 @@ export const AdminPanel: React.FC = () => {
                           variant="ghost"
                           size="sm"
                           onClick={() => handlePauseCrowdsale(crowdsale.address)}
+                          disabled={operationLoading}
                         >
                           {crowdsale.status === 'active' ? (
                             <>
@@ -284,6 +453,7 @@ export const AdminPanel: React.FC = () => {
                           size="sm"
                           onClick={() => handleFinalizeCrowdsale(crowdsale.address)}
                           className="text-red-600 hover:text-red-700"
+                          disabled={operationLoading}
                         >
                           结束众筹
                         </Button>
@@ -378,19 +548,13 @@ export const AdminPanel: React.FC = () => {
                       <option value="WHITELISTED">白名单用户</option>
                       <option value="VIP">VIP用户</option>
                     </select>
-                    <input
-                      type="number"
-                      placeholder="配额 (ETH)"
-                      value={newUserAllocation}
-                      onChange={(e) => setNewUserAllocation(e.target.value)}
-                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    />
                   </div>
                   <Button
                     variant="primary"
                     size="sm"
                     onClick={handleAddWhitelistUser}
                     className="w-full"
+                    disabled={operationLoading}
                   >
                     <PlusIcon className="h-4 w-4 mr-2" />
                     添加用户
@@ -435,6 +599,7 @@ export const AdminPanel: React.FC = () => {
                       size="sm"
                       onClick={() => handleRemoveWhitelistUser(user.address)}
                       className="text-red-600 hover:text-red-700"
+                      disabled={operationLoading}
                     >
                       <TrashIcon className="h-4 w-4" />
                     </Button>
@@ -455,7 +620,12 @@ export const AdminPanel: React.FC = () => {
               <Button variant="secondary" className="w-full">
                 导出白名单用户
               </Button>
-              <Button variant="secondary" className="w-full">
+              <Button 
+                variant="secondary" 
+                className="w-full"
+                onClick={() => setShowBatchImport(true)}
+                disabled={operationLoading}
+              >
                 批量导入白名单
               </Button>
               <Button variant="secondary" className="w-full">
