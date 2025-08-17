@@ -243,6 +243,21 @@ contract TokenCrowdsale is
     
     /**
      * @dev 购买代币 - 核心购买功能
+     * 
+     * 功能概述：
+     * 用户购买代币的主要入口函数，支持预售和公售阶段的代币购买
+     * 
+     * 实现步骤：
+     * 1. 验证购买条件（阶段、时间窗口、金额限制等）
+     * 2. 检查硬顶限制和白名单权限
+     * 3. 通过定价策略计算代币数量
+     * 4. 处理购买逻辑和统计更新
+     * 5. 转移资金到托管合约或资金钱包
+     * 6. 发出TokensPurchased事件
+     * 
+     * 权限要求：任何人都可调用，但需满足各种购买条件
+     * 用途说明：用户参与众筹购买代币的核心接口
+     * 安全考虑：使用多重修饰符验证、ReentrancyGuard防重入、购买冷却时间防刷单
      */
     function purchaseTokens() 
         external 
@@ -291,6 +306,23 @@ contract TokenCrowdsale is
     
     /**
      * @dev 批量购买（为多个地址购买代币）- 仅管理员
+     * @param buyers 购买者地址数组
+     * @param weiAmounts 对应的购买金额数组
+     * 
+     * 功能概述：
+     * 管理员为多个地址批量购买代币，提高运营效率和降低Gas成本
+     * 
+     * 实现步骤：
+     * 1. 验证数组长度匹配和批量大小限制
+     * 2. 计算总需要的ETH金额并验证支付
+     * 3. 遍历购买者数组执行购买
+     * 4. 跳过无效地址和不符合条件的购买
+     * 5. 处理资金转移和多余ETH退还
+     * 6. 为每个成功购买发出事件
+     * 
+     * 权限要求：只允许CROWDSALE_OPERATOR_ROLE角色调用
+     * 用途说明：管理员批量处理购买，适用于私募或特殊分配场景
+     * 安全考虑：限制批量大小防止Gas耗尽，跳过失败项防止整体回滚
      */
     function batchPurchase(
         address[] calldata buyers,
@@ -359,6 +391,17 @@ contract TokenCrowdsale is
     
     /**
      * @dev 获取当前众筹阶段
+     * @return 当前众筹所处的阶段
+     * 
+     * 功能概述：
+     * 查询众筹合约当前所处的阶段状态
+     * 
+     * 实现步骤：
+     * 1. 直接返回currentPhase状态变量
+     * 
+     * 权限要求：无，公开查询接口
+     * 用途说明：前端和其他合约查询众筹当前状态
+     * 安全考虑：只读操作，无安全风险
      */
     function getCurrentPhase() external view override returns (CrowdsalePhase) {
         return currentPhase;
@@ -366,6 +409,17 @@ contract TokenCrowdsale is
     
     /**
      * @dev 获取众筹配置
+     * @return 完整的众筹配置信息
+     * 
+     * 功能概述：
+     * 获取众筹的完整配置参数，包括时间、资金目标、购买限制等
+     * 
+     * 实现步骤：
+     * 1. 返回config结构体的完整副本
+     * 
+     * 权限要求：无，公开查询接口
+     * 用途说明：查询众筹的配置参数
+     * 安全考虑：只读操作，无安全风险
      */
     function getCrowdsaleConfig() external view override returns (CrowdsaleConfig memory) {
         return config;
@@ -373,6 +427,17 @@ contract TokenCrowdsale is
     
     /**
      * @dev 获取众筹统计信息
+     * @return 众筹的统计数据
+     * 
+     * 功能概述：
+     * 获取众筹的实时统计信息，包括筹资总额、参与人数、代币销售量等
+     * 
+     * 实现步骤：
+     * 1. 返回stats结构体的完整副本
+     * 
+     * 权限要求：无，公开查询接口
+     * 用途说明：查询众筹的进度和统计数据
+     * 安全考虑：只读操作，无安全风险
      */
     function getCrowdsaleStats() external view override returns (CrowdsaleStats memory) {
         return stats;
@@ -380,6 +445,19 @@ contract TokenCrowdsale is
     
     /**
      * @dev 检查是否在有效时间窗口内
+     * @return 是否在当前阶段的有效时间范围内
+     * 
+     * 功能概述：
+     * 根据当前众筹阶段检查是否在对应的时间窗口内
+     * 
+     * 实现步骤：
+     * 1. 获取当前时间戳
+     * 2. 根据当前阶段检查对应的时间范围
+     * 3. 返回时间验证结果
+     * 
+     * 权限要求：无，公开查询接口
+     * 用途说明：验证购买时间是否合法
+     * 安全考虑：只读操作，无安全风险
      */
     function isInValidTimeWindow() public view override returns (bool) {
         uint256 currentTime = block.timestamp;
@@ -397,6 +475,18 @@ contract TokenCrowdsale is
     
     /**
      * @dev 检查软顶是否达成
+     * @return 是否达到软顶目标
+     * 
+     * 功能概述：
+     * 检查当前筹资总额是否达到软顶目标
+     * 
+     * 实现步骤：
+     * 1. 比较当前筹资总额与软顶设置
+     * 2. 返回比较结果
+     * 
+     * 权限要求：无，公开查询接口
+     * 用途说明：判断众筹是否成功，决定资金释放或退款
+     * 安全考虑：只读操作，无安全风险
      */
     function isSoftCapReached() public view override returns (bool) {
         return stats.totalRaised >= config.softCap;
@@ -404,6 +494,18 @@ contract TokenCrowdsale is
     
     /**
      * @dev 检查硬顶是否达成
+     * @return 是否达到硬顶目标
+     * 
+     * 功能概述：
+     * 检查当前筹资总额是否达到硬顶上限
+     * 
+     * 实现步骤：
+     * 1. 比较当前筹资总额与硬顶设置
+     * 2. 返回比较结果
+     * 
+     * 权限要求：无，公开查询接口
+     * 用途说明：判断众筹是否应该立即结束，防止超过目标
+     * 安全考虑：只读操作，无安全风险
      */
     function isHardCapReached() public view override returns (bool) {
         return stats.totalRaised >= config.hardCap;
@@ -437,6 +539,20 @@ contract TokenCrowdsale is
     
     /**
      * @dev 开始预售阶段
+     * 
+     * 功能概述：
+     * 将众筹从 PENDING 阶段转换到 PRESALE 阶段，开始预售
+     * 
+     * 实现步骤：
+     * 1. 验证当前阶段为 PENDING
+     * 2. 检查预售开始时间已到
+     * 3. 检查预售结束时间未过
+     * 4. 执行阶段切换
+     * 5. 发出PhaseChanged事件
+     * 
+     * 权限要求：只允许CROWDSALE_ADMIN_ROLE角色调用
+     * 用途说明：管理员启动预售阶段，允许白名单用户购买
+     * 安全考虑：使用状态转换验证，确保时间窗口合法
      */
     function startPresale() 
         external 
@@ -453,6 +569,20 @@ contract TokenCrowdsale is
     
     /**
      * @dev 开始公售阶段
+     * 
+     * 功能概述：
+     * 将众筹从 PRESALE 阶段转换到 PUBLIC_SALE 阶段，开始公开销售
+     * 
+     * 实现步骤：
+     * 1. 验证当前阶段为 PRESALE
+     * 2. 检查公售开始时间已到
+     * 3. 检查公售结束时间未过
+     * 4. 执行阶段切换
+     * 5. 发出PhaseChanged事件
+     * 
+     * 权限要求：只允许CROWDSALE_ADMIN_ROLE角色调用
+     * 用途说明：管理员启动公售阶段，允许所有用户购买
+     * 安全考虑：使用状态转换验证，确保时间窗口合法
      */
     function startPublicSale() 
         external 
@@ -469,6 +599,20 @@ contract TokenCrowdsale is
     
     /**
      * @dev 结束众筹
+     * 
+     * 功能概述：
+     * 结束众筹并转换到 FINALIZED 阶段，处理资金释放或退款
+     * 
+     * 实现步骤：
+     * 1. 验证当前阶段为 PRESALE 或 PUBLIC_SALE
+     * 2. 检查结束条件（时间到期或硬顶达成）
+     * 3. 处理资金托管（软顶达成释放资金，未达成启用退款）
+     * 4. 转换到 FINALIZED 阶段
+     * 5. 发出PhaseChanged事件
+     * 
+     * 权限要求：只允许CROWDSALE_ADMIN_ROLE角色调用
+     * 用途说明：管理员结束众筹并处理后续资金操作
+     * 安全考虑：严格验证结束条件，自动处理资金托管逻辑
      */
     function finalizeCrowdsale() 
         external 
@@ -505,6 +649,20 @@ contract TokenCrowdsale is
     
     /**
      * @dev 紧急暂停众筹
+     * @param reason 暂停原因说明
+     * 
+     * 功能概述：
+     * 在紧急情况下暂停众筹的所有操作，防止进一步损失
+     * 
+     * 实现步骤：
+     * 1. 验证当前未处于暂停状态
+     * 2. 记录紧急暂停开始时间
+     * 3. 执行暂停操作
+     * 4. 发出EmergencyAction事件
+     * 
+     * 权限要求：只允许EMERGENCY_ROLE角色调用
+     * 用途说明：应对安全威胁或系统异常的紧急停机
+     * 安全考虑：只有授权角色可执行，记录暂停原因以便审计
      */
     function emergencyPause(string calldata reason) 
         external 
@@ -521,6 +679,21 @@ contract TokenCrowdsale is
     
     /**
      * @dev 恢复众筹
+     * @param reason 恢复原因说明
+     * 
+     * 功能概述：
+     * 解除紧急暂停状态，恢复众筹正常运行
+     * 
+     * 实现步骤：
+     * 1. 验证当前处于暂停状态
+     * 2. 检查暂停时间未超过最大允许时长
+     * 3. 清除暂停开始时间
+     * 4. 执行恢复操作
+     * 5. 发出EmergencyAction事件
+     * 
+     * 权限要求：只允许EMERGENCY_ROLE角色调用
+     * 用途说明：问题解决后恢复系统正常运行
+     * 安全考虑：限制暂停最大时长，防止无限期暂停
      */
     function emergencyResume(string calldata reason) 
         external 
@@ -543,6 +716,21 @@ contract TokenCrowdsale is
     
     /**
      * @dev 更新众筹配置
+     * @param _config 新的众筹配置
+     * 
+     * 功能概述：
+     * 更新众筹的完整配置参数，仅在 PENDING 阶段允许
+     * 
+     * 实现步骤：
+     * 1. 验证当前阶段为 PENDING
+     * 2. 检查配置更新冷却时间
+     * 3. 验证新配置的有效性
+     * 4. 更新配置并记录时间
+     * 5. 发出ConfigUpdated事件
+     * 
+     * 权限要求：只允许CROWDSALE_ADMIN_ROLE角色调用
+     * 用途说明：管理员在众筹开始前调整参数
+     * 安全考虑：只在PENDING阶段允许，冷却时间防止频繁修改
      */
     function updateConfig(CrowdsaleConfig calldata _config) 
         external 

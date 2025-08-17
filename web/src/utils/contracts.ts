@@ -58,23 +58,23 @@ export const CONTRACT_ABIS = {
   ],
   
   CrowdsaleFactory: [
-    // Core functions
-    "function createCrowdsale(tuple(string,string,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,bool)) external payable returns (address, address, address)",
-    "function batchCreateCrowdsale(tuple(string,string,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,bool)[]) external payable returns (address[])",
+    // Core functions - Updated to match interface struct definitions
+    "function createCrowdsale(tuple(string tokenName, string tokenSymbol, uint256 totalSupply, uint256 softCap, uint256 hardCap, uint256 startTime, uint256 endTime, address fundingWallet, uint256 tokenPrice, tuple(bool enabled, uint256 cliffDuration, uint256 vestingDuration, uint8 vestingType, uint256 immediateReleasePercentage) vestingParams)) external payable returns (address crowdsaleAddress, address tokenAddress, address vestingAddress)",
+    "function batchCreateCrowdsale(tuple(string tokenName, string tokenSymbol, uint256 totalSupply, uint256 softCap, uint256 hardCap, uint256 startTime, uint256 endTime, address fundingWallet, uint256 tokenPrice, tuple(bool enabled, uint256 cliffDuration, uint256 vestingDuration, uint8 vestingType, uint256 immediateReleasePercentage) vestingParams)[]) external payable returns (address[])",
     
-    // Query functions
-    "function getCrowdsaleInstance(address) external view returns (tuple(address,address,address,address,string,string,bool,uint256))",
-    "function getCreatorCrowdsales(address) external view returns (tuple(address,address,address,address,string,string,bool,uint256)[])",
-    "function getActiveCrowdsales() external view returns (tuple(address,address,address,address,string,string,bool,uint256)[])",
+    // Query functions - Updated to match CrowdsaleInstance struct
+    "function getCrowdsaleInstance(address) external view returns (tuple(address crowdsaleAddress, address tokenAddress, address vestingAddress, address creator, uint256 createdAt, bool isActive))",
+    "function getCreatorCrowdsales(address) external view returns (tuple(address crowdsaleAddress, address tokenAddress, address vestingAddress, address creator, uint256 createdAt, bool isActive)[])",
+    "function getActiveCrowdsales() external view returns (tuple(address crowdsaleAddress, address tokenAddress, address vestingAddress, address creator, uint256 createdAt, bool isActive)[])",
     "function getTotalCrowdsales() external view returns (uint256)",
-    "function validateCrowdsaleParams(tuple(string,string,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,address,bool)) external view returns (bool, string)",
-    "function getFactoryStats() external view returns (uint256, uint256, uint256)",
+    "function validateCrowdsaleParams(tuple(string tokenName, string tokenSymbol, uint256 totalSupply, uint256 softCap, uint256 hardCap, uint256 startTime, uint256 endTime, address fundingWallet, uint256 tokenPrice, tuple(bool enabled, uint256 cliffDuration, uint256 vestingDuration, uint8 vestingType, uint256 immediateReleasePercentage) vestingParams)) external view returns (bool isValid, string memory errorMessage)",
+    "function getFactoryStats() external view returns (uint256 totalCrowdsales, uint256 activeCrowdsales, uint256 totalFeesCollected)",
     
     // Management functions
     "function updateCrowdsaleStatus(address, bool) external",
     "function setCreationFee(uint256) external",
     "function setPublicCreationAllowed(bool) external",
-    "function withdrawFees(address, uint256) external",
+    "function withdrawFees(address payable, uint256) external",
     "function getCreationFee() external view returns (uint256)",
     "function isPublicCreationAllowed() external view returns (bool)",
     
@@ -197,3 +197,6 @@ export const getContractAddress = (contractName: string): string | null => {
 export const getContractABI = (contractName: keyof typeof CONTRACT_ABIS) => {
   return CONTRACT_ABIS[contractName];
 };
+
+// Export CONTRACT_ABIS as CONTRACTS for backward compatibility
+export const CONTRACTS = CONTRACT_ABIS;

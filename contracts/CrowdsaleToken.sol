@@ -82,6 +82,17 @@ IERC20Extended {
      * @dev 铸币函数，仅限授权地址调用
      * @param to 接收代币的地址
      * @param amount 要铸造的代币数量
+     * 
+     * 实现步骤：
+     * 1. 验证接收地址不为零地址
+     * 2. 验证铸造数量大于0
+     * 3. 检查铸造后是否超过最大供应量
+     * 4. 更新铸造统计信息
+     * 5. 执行代币铸造并发出事件
+     * 
+     * 权限要求：MINTER_ROLE
+     * 用途说明：为众筹参与者铸造代币，用于代币分发
+     * 安全考虑：防止超发、重入攻击保护、角色权限控制
      */
     function mint(address to, uint256 amount) 
         external
@@ -107,6 +118,17 @@ IERC20Extended {
      * @dev 批量铸造代币
      * @param recipients 接收地址数组
      * @param amounts 铸造数量数组
+     * 
+     * 实现步骤：
+     * 1. 验证数组长度匹配且不为空
+     * 2. 限制批量大小防止Gas耗尽
+     * 3. 计算总铸造数量并检查供应量限制
+     * 4. 逐个验证地址和数量的有效性
+     * 5. 批量执行铸造并更新统计信息
+     * 
+     * 权限要求：MINTER_ROLE
+     * 用途说明：高效批量分发代币，减少交易成本
+     * 安全考虑：批量大小限制、重入攻击保护、总量控制
      */
     function batchMint(address[] calldata recipients, uint256[] calldata amounts)
         external
@@ -140,6 +162,17 @@ IERC20Extended {
      * @dev 燃烧指定地址的代币
      * @param from 燃烧地址
      * @param amount 燃烧数量
+     * 
+     * 实现步骤：
+     * 1. 验证燃烧地址不为零地址
+     * 2. 验证燃烧数量大于0
+     * 3. 更新燃烧统计信息
+     * 4. 调用父合约燃烧函数
+     * 5. 发出燃烧事件
+     * 
+     * 权限要求：BURNER_ROLE
+     * 用途说明：销毁代币以减少总供应量，用于通缩机制
+     * 安全考虑：权限控制、重入攻击保护、统计准确性
      */
     function burnFrom(address from, uint256 amount) 
         public 
@@ -161,6 +194,15 @@ IERC20Extended {
 
      /**
      * @dev 暂停所有代币转账
+     * 
+     * 实现步骤：
+     * 1. 验证调用者具有暂停权限
+     * 2. 调用内部暂停函数
+     * 3. 阻止所有代币转账操作
+     * 
+     * 权限要求：PAUSER_ROLE
+     * 用途说明：紧急情况下停止所有代币流动
+     * 安全考虑：防止恶意转账、应急响应机制
      */
     function pause() external override onlyRole(PAUSER_ROLE) {
         _pause();
@@ -168,6 +210,15 @@ IERC20Extended {
 
     /**
      * @dev 恢复所有代币转账
+     * 
+     * 实现步骤：
+     * 1. 验证调用者具有暂停权限
+     * 2. 调用内部恢复函数
+     * 3. 恢复所有代币转账功能
+     * 
+     * 权限要求：PAUSER_ROLE
+     * 用途说明：紧急情况解除后恢复正常代币流动
+     * 安全考虑：确保只有授权人员可以恢复操作
      */
     function unpause() external override onlyRole(PAUSER_ROLE) {
         _unpause();
@@ -184,6 +235,16 @@ IERC20Extended {
   /**
      * @dev 更新最大供应量（仅能减少）
      * @param newMaxSupply 新的最大供应量
+     * 
+     * 实现步骤：
+     * 1. 验证新供应量不小于当前总供应量
+     * 2. 验证新供应量小于当前最大供应量（只能减少）
+     * 3. 更新最大供应量状态变量
+     * 4. 发出供应量更新事件
+     * 
+     * 权限要求：DEFAULT_ADMIN_ROLE
+     * 用途说明：动态调整代币经济模型，实现通缩机制
+     * 安全考虑：防止恶意增发、确保经济模型稳定性
      */
     function updateMaxSupply(uint256 newMaxSupply) 
         external 
@@ -200,6 +261,14 @@ IERC20Extended {
 
      /**
      * @dev 获取最大供应量
+     * @return 代币的最大供应量
+     * 
+     * 实现步骤：
+     * 1. 直接返回存储的最大供应量
+     * 
+     * 权限要求：无，公开查询接口
+     * 用途说明：供外部查询代币经济模型参数
+     * 安全考虑：只读操作，无安全风险
      */
     function maxSupply() external view override returns (uint256) {
         return _maxSupply;
@@ -208,6 +277,16 @@ IERC20Extended {
      /**
      * @dev 检查是否可以铸造指定数量
      * @param amount 计划铸造数量
+     * @return 是否可以铸造指定数量
+     * 
+     * 实现步骤：
+     * 1. 计算铸造后的总供应量
+     * 2. 与最大供应量进行比较
+     * 3. 返回比较结果
+     * 
+     * 权限要求：无，公开查询接口
+     * 用途说明：铸造前的预检查，防止超发
+     * 安全考虑：确保铸造操作不会违反供应量限制
      */
     function canMint(uint256 amount) public view override returns (bool) {
         return totalSupply() + amount <= _maxSupply;
@@ -215,6 +294,15 @@ IERC20Extended {
 
       /**
      * @dev 获取剩余可铸造数量
+     * @return 剩余可铸造的代币数量
+     * 
+     * 实现步骤：
+     * 1. 计算最大供应量与当前总供应量的差值
+     * 2. 返回剩余可铸造数量
+     * 
+     * 权限要求：无，公开查询接口
+     * 用途说明：查询还可以铸造多少代币
+     * 安全考虑：只读操作，无安全风险
      */
     function remainingMintable() external view returns (uint256) {
         return _maxSupply - totalSupply();
@@ -223,6 +311,22 @@ IERC20Extended {
 
     /**
      * @dev 获取代币统计信息
+     * @return currentSupply 当前总供应量
+     * @return maxSupply_ 最大供应量
+     * @return totalMinted_ 总铸造数量
+     * @return totalBurned_ 总燃烧数量
+     * @return remainingMintable_ 剩余可铸造数量
+     * @return isPaused 是否处于暂停状态
+     * 
+     * 实现步骤：
+     * 1. 收集各项代币统计数据
+     * 2. 计算剩余可铸造数量
+     * 3. 获取暂停状态
+     * 4. 返回完整统计信息
+     * 
+     * 权限要求：无，公开查询接口
+     * 用途说明：一次性获取代币的完整状态信息
+     * 安全考虑：只读操作，无安全风险
      */
     function getTokenStats() external view returns (
         uint256 currentSupply,

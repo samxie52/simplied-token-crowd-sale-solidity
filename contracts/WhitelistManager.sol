@@ -106,6 +106,21 @@ contract WhitelistManager is
     
     /**
      * @dev 添加用户到白名单
+     * @param user 用户地址
+     * @param level 白名单级别（NONE, WHITELISTED, VIP, BLACKLISTED）
+     * 
+     * 功能概述：
+     * 将指定用户添加到白名单中，设置相应的权限级别
+     * 
+     * 实现步骤：
+     * 1. 验证用户地址有效性和权限
+     * 2. 调用内部函数_addToWhitelist处理添加逻辑
+     * 3. 更新用户统计信息
+     * 4. 发出WhitelistAdded事件
+     * 
+     * 权限要求：只允许WHITELIST_OPERATOR_ROLE或更高权限角色调用
+     * 用途说明：为众筹参与者设置白名单权限，控制参与资格
+     * 安全考虑：使用ReentrancyGuard防重入，严格权限控制，地址有效性验证
      */
     function addToWhitelist(
         address user, 
@@ -123,6 +138,22 @@ contract WhitelistManager is
     
     /**
      * @dev 添加用户到白名单（带过期时间）
+     * @param user 用户地址
+     * @param level 白名单级别
+     * @param expirationTime 过期时间戳（0表示永不过期）
+     * 
+     * 功能概述：
+     * 将用户添加到白名单并设置过期时间，支持临时权限管理
+     * 
+     * 实现步骤：
+     * 1. 验证过期时间的有效性（必须大于当前时间或为0）
+     * 2. 调用内部函数处理添加逻辑
+     * 3. 设置过期时间并更新统计
+     * 4. 发出相应事件
+     * 
+     * 权限要求：只允许WHITELIST_OPERATOR_ROLE或更高权限角色调用
+     * 用途说明：为临时参与者或测试用户设置有时限的白名单权限
+     * 安全考虑：验证过期时间合理性，防止设置过去的时间
      */
     function addToWhitelistWithExpiration(
         address user,
@@ -145,6 +176,21 @@ contract WhitelistManager is
     
     /**
      * @dev 从白名单移除用户
+     * @param user 要移除的用户地址
+     * 
+     * 功能概述：
+     * 从白名单中完全移除指定用户，清除其所有权限
+     * 
+     * 实现步骤：
+     * 1. 验证用户地址有效性和操作权限
+     * 2. 调用内部函数_removeFromWhitelist处理移除逻辑
+     * 3. 更新用户数组和索引映射
+     * 4. 更新统计信息
+     * 5. 发出WhitelistRemoved事件
+     * 
+     * 权限要求：只允许WHITELIST_OPERATOR_ROLE或更高权限角色调用
+     * 用途说明：移除违规用户或不再需要权限的用户
+     * 安全考虑：完全清除用户数据，更新数组结构保持数据一致性
      */
     function removeFromWhitelist(
         address user
@@ -161,6 +207,22 @@ contract WhitelistManager is
     
     /**
      * @dev 批量添加用户到白名单
+     * @param users 用户地址数组
+     * @param levels 对应的白名单级别数组
+     * 
+     * 功能概述：
+     * 批量将多个用户添加到白名单中，提高操作效率
+     * 
+     * 实现步骤：
+     * 1. 验证数组长度匹配和批量大小限制
+     * 2. 遍历用户数组，验证每个地址有效性
+     * 3. 对每个用户调用内部添加函数
+     * 4. 创建内存数组用于事件发出
+     * 5. 发出BatchWhitelistAdded事件
+     * 
+     * 权限要求：只允许WHITELIST_OPERATOR_ROLE或更高权限角色调用
+     * 用途说明：批量处理众筹参与者的白名单权限，节省Gas成本
+     * 安全考虑：限制批量大小防止Gas耗尽，验证每个地址有效性
      */
     function batchAddToWhitelist(
         address[] calldata users,
@@ -194,6 +256,23 @@ contract WhitelistManager is
     
     /**
      * @dev 批量添加用户到白名单（带过期时间）
+     * @param users 用户地址数组
+     * @param levels 对应的白名单级别数组
+     * @param expirationTime 统一的过期时间戳
+     * 
+     * 功能概述：
+     * 批量将用户添加到白名单并设置统一的过期时间
+     * 
+     * 实现步骤：
+     * 1. 验证数组长度匹配和过期时间有效性
+     * 2. 验证批量大小在允许范围内
+     * 3. 遍历处理每个用户的添加操作
+     * 4. 为所有用户设置相同的过期时间
+     * 5. 发出批量添加事件
+     * 
+     * 权限要求：只允许WHITELIST_OPERATOR_ROLE或更高权限角色调用
+     * 用途说明：为临时活动或测试阶段批量设置有时限的白名单权限
+     * 安全考虑：统一过期时间管理，防止设置无效时间
      */
     function batchAddToWhitelistWithExpiration(
         address[] calldata users,
@@ -223,6 +302,21 @@ contract WhitelistManager is
     
     /**
      * @dev 批量移除用户白名单
+     * @param users 要移除的用户地址数组
+     * 
+     * 功能概述：
+     * 批量从白名单中移除多个用户，提高管理效率
+     * 
+     * 实现步骤：
+     * 1. 验证批量大小在允许范围内
+     * 2. 遍历用户数组，验证每个地址有效性
+     * 3. 对每个用户调用内部移除函数
+     * 4. 更新相关统计信息
+     * 5. 为每个用户发出移除事件
+     * 
+     * 权限要求：只允许WHITELIST_OPERATOR_ROLE或更高权限角色调用
+     * 用途说明：批量清理违规用户或过期权限，维护白名单质量
+     * 安全考虑：限制批量大小，验证每个地址，安全更新数据结构
      */
     function batchRemoveFromWhitelist(
         address[] calldata users
@@ -242,6 +336,23 @@ contract WhitelistManager is
     
     /**
      * @dev 转移白名单状态
+     * @param from 源用户地址
+     * @param to 目标用户地址
+     * 
+     * 功能概述：
+     * 将一个用户的白名单状态完全转移给另一个用户
+     * 
+     * 实现步骤：
+     * 1. 验证源地址和目标地址的有效性
+     * 2. 检查源地址确实有白名单状态
+     * 3. 处理目标地址的现有状态（如果有）
+     * 4. 转移白名单级别和过期时间
+     * 5. 清除源地址状态并更新统计
+     * 6. 发出WhitelistTransferred事件
+     * 
+     * 权限要求：只允许WHITELIST_OPERATOR_ROLE或更高权限角色调用
+     * 用途说明：处理用户地址变更或权限转让场景
+     * 安全考虑：防止转移到相同地址，正确处理统计数据，保持数据一致性
      */
     function transferWhitelistStatus(
         address from,
@@ -290,6 +401,19 @@ contract WhitelistManager is
     
     /**
      * @dev 获取用户白名单状态
+     * @param user 用户地址
+     * @return level 用户当前的有效白名单级别
+     * 
+     * 功能概述：
+     * 查询用户当前的有效白名单级别，考虑过期时间
+     * 
+     * 实现步骤：
+     * 1. 调用内部函数_getEffectiveLevel获取有效级别
+     * 2. 考虑过期时间，返回实际有效的级别
+     * 
+     * 权限要求：无，公开查询接口
+     * 用途说明：众筹合约查询用户参与资格和权限级别
+     * 安全考虑：只读操作，自动处理过期状态，无安全风险
      */
     function getWhitelistStatus(address user) external view override returns (WhitelistLevel level) {
         return _getEffectiveLevel(user);
@@ -297,6 +421,19 @@ contract WhitelistManager is
     
     /**
      * @dev 获取用户完整白名单信息
+     * @param user 用户地址
+     * @return info 用户的完整白名单信息结构
+     * 
+     * 功能概述：
+     * 获取用户的详细白名单信息，包括级别、过期时间、添加时间等
+     * 
+     * 实现步骤：
+     * 1. 从存储中直接返回用户的白名单信息结构
+     * 2. 包含所有原始数据，不考虑过期状态
+     * 
+     * 权限要求：无，公开查询接口
+     * 用途说明：获取用户白名单的完整历史和配置信息
+     * 安全考虑：只读操作，返回原始数据，无安全风险
      */
     function getWhitelistInfo(address user) external view override returns (WhitelistInfo memory info) {
         return _whitelistInfo[user];
@@ -304,6 +441,20 @@ contract WhitelistManager is
     
     /**
      * @dev 检查用户是否在白名单中
+     * @param user 用户地址
+     * @return 用户是否具有白名单或VIP权限
+     * 
+     * 功能概述：
+     * 检查用户是否具有有效的白名单权限（WHITELISTED或VIP级别）
+     * 
+     * 实现步骤：
+     * 1. 获取用户的有效级别
+     * 2. 判断是否为WHITELISTED或VIP级别
+     * 3. 返回布尔值结果
+     * 
+     * 权限要求：无，公开查询接口
+     * 用途说明：众筹合约快速检查用户参与资格
+     * 安全考虑：自动处理过期状态，只返回有效权限
      */
     function isWhitelisted(address user) external view override returns (bool) {
         WhitelistLevel level = _getEffectiveLevel(user);
@@ -312,6 +463,20 @@ contract WhitelistManager is
     
     /**
      * @dev 检查用户是否为VIP
+     * @param user 用户地址
+     * @return 用户是否具有VIP权限
+     * 
+     * 功能概述：
+     * 检查用户是否具有有效的VIP级别权限
+     * 
+     * 实现步骤：
+     * 1. 获取用户的有效级别
+     * 2. 判断是否为VIP级别
+     * 3. 返回布尔值结果
+     * 
+     * 权限要求：无，公开查询接口
+     * 用途说明：众筹合约检查VIP用户的特殊权限和优惠
+     * 安全考虑：自动处理过期状态，确保只返回有效VIP状态
      */
     function isVIP(address user) external view override returns (bool) {
         return _getEffectiveLevel(user) == WhitelistLevel.VIP;
@@ -319,6 +484,20 @@ contract WhitelistManager is
     
     /**
      * @dev 检查用户是否被黑名单
+     * @param user 用户地址
+     * @return 用户是否被列入黑名单
+     * 
+     * 功能概述：
+     * 检查用户是否被列入黑名单，禁止参与众筹
+     * 
+     * 实现步骤：
+     * 1. 获取用户的有效级别
+     * 2. 判断是否为BLACKLISTED级别
+     * 3. 返回布尔值结果
+     * 
+     * 权限要求：无，公开查询接口
+     * 用途说明：众筹合约检查用户是否被禁止参与
+     * 安全考虑：自动处理过期状态，确保黑名单检查的准确性
      */
     function isBlacklisted(address user) external view override returns (bool) {
         return _getEffectiveLevel(user) == WhitelistLevel.BLACKLISTED;
@@ -326,6 +505,20 @@ contract WhitelistManager is
     
     /**
      * @dev 检查白名单是否过期
+     * @param user 用户地址
+     * @return 用户的白名单权限是否已过期
+     * 
+     * 功能概述：
+     * 检查用户的白名单权限是否已经过期
+     * 
+     * 实现步骤：
+     * 1. 获取用户的白名单信息
+     * 2. 检查过期时间是否设置且已过当前时间
+     * 3. 返回过期状态
+     * 
+     * 权限要求：无，公开查询接口
+     * 用途说明：检查临时白名单权限的有效性
+     * 安全考虑：只读操作，基于当前时间戳判断，无安全风险
      */
     function isExpired(address user) external view override returns (bool) {
         WhitelistInfo memory info = _whitelistInfo[user];
@@ -334,6 +527,21 @@ contract WhitelistManager is
     
     /**
      * @dev 获取白名单统计信息
+     * @return _vipCount VIP用户数量
+     * @return _whitelistedCount 白名单用户数量
+     * @return _blacklistedCount 黑名单用户数量
+     * @return _totalCount 总用户数量
+     * 
+     * 功能概述：
+     * 获取白名单系统的全面统计信息
+     * 
+     * 实现步骤：
+     * 1. 返回存储中的各类统计数据
+     * 2. 包括VIP、白名单、黑名单和总用户数
+     * 
+     * 权限要求：无，公开查询接口
+     * 用途说明：为管理员和前端提供白名单系统的整体数据概览
+     * 安全考虑：只读操作，返回实时统计数据，无安全风险
      */
     function getWhitelistStats() external view override returns (
         uint256 _vipCount,
@@ -454,6 +662,20 @@ contract WhitelistManager is
     
     /**
      * @dev 清理过期的白名单条目
+     * @param users 要检查和清理的用户地址数组
+     * 
+     * 功能概述：
+     * 批量清理已过期的白名单条目，将其级别设置为NONE
+     * 
+     * 实现步骤：
+     * 1. 验证批量大小在允许范围内
+     * 2. 遍历用户数组，检查每个用户的过期状态
+     * 3. 对于过期用户，更新统计并设置级别为NONE
+     * 4. 清除过期时间并发出WhitelistExpired事件
+     * 
+     * 权限要求：只允许WHITELIST_OPERATOR_ROLE或更高权限角色调用
+     * 用途说明：定期维护白名单数据质量，清理过期条目
+     * 安全考虑：只处理真正过期的条目，保留记录但清除权限
      */
     function cleanupExpiredWhitelists(
         address[] calldata users
@@ -482,6 +704,18 @@ contract WhitelistManager is
     
     /**
      * @dev 暂停白名单功能
+     * 
+     * 功能概述：
+     * 暂停白名单管理合约的所有状态变更操作
+     * 
+     * 实现步骤：
+     * 1. 调用OpenZeppelin的_pause()函数
+     * 2. 触发Paused事件
+     * 3. 禁止所有状态变更操作
+     * 
+     * 权限要求：只允许WHITELIST_ADMIN_ROLE或DEFAULT_ADMIN_ROLE角色调用
+     * 用途说明：紧急情况下暂停白名单管理操作
+     * 安全考虑：严格权限控制，防止滥用暂停功能
      */
     function pause() external override onlyWhitelistAdmin {
         _pause();
@@ -489,6 +723,18 @@ contract WhitelistManager is
     
     /**
      * @dev 恢复白名单功能
+     * 
+     * 功能概述：
+     * 恢复白名单管理合约的正常运行，解除暂停状态
+     * 
+     * 实现步骤：
+     * 1. 调用OpenZeppelin的_unpause()函数
+     * 2. 触发Unpaused事件
+     * 3. 恢复所有状态变更操作
+     * 
+     * 权限要求：只允许WHITELIST_ADMIN_ROLE或DEFAULT_ADMIN_ROLE角色调用
+     * 用途说明：紧急情况处理完毕后恢复正常运行
+     * 安全考虑：严格权限控制，确保只有管理员可以恢复
      */
     function unpause() external override onlyWhitelistAdmin {
         _unpause();
@@ -496,6 +742,18 @@ contract WhitelistManager is
     
     /**
      * @dev 检查合约是否暂停
+     * @return 合约是否处于暂停状态
+     * 
+     * 功能概述：
+     * 检查白名单管理合约是否处于暂停状态
+     * 
+     * 实现步骤：
+     * 1. 调用父类的paused()函数
+     * 2. 返回当前暂停状态
+     * 
+     * 权限要求：无，公开查询接口
+     * 用途说明：其他合约检查白名单系统的可用性
+     * 安全考虑：只读操作，无安全风险
      */
     function paused() public view override(Pausable, IWhitelistManager) returns (bool) {
         return super.paused();

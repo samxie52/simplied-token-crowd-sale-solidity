@@ -97,6 +97,21 @@ contract CrowdsaleFactory is ICrowdsaleFactory, AccessControl, Pausable, Reentra
     
     /**
      * @dev 创建新的众筹实例
+     * @param params 众筹参数结构体，包含代币信息、时间设置、资金目标等
+     * @return crowdsaleAddress 创建的众筹合约地址
+     * @return tokenAddress 创建的代币合约地址  
+     * @return vestingAddress 创建的释放合约地址（如果启用）
+     * 
+     * 实现步骤：
+     * 1. 验证创建费用是否足够
+     * 2. 验证众筹参数的有效性
+     * 3. 依次部署子合约：代币、释放、白名单、众筹、退款金库
+     * 4. 配置各合约间的权限关系
+     * 5. 记录众筹实例信息
+     * 6. 更新费用统计并发出事件
+     * 
+     * 权限要求：需要FACTORY_OPERATOR_ROLE或启用公开创建
+     * 状态要求：合约未暂停，支付足够的创建费用
      */
     function createCrowdsale(CrowdsaleParams calldata params) 
         external 
@@ -161,6 +176,18 @@ contract CrowdsaleFactory is ICrowdsaleFactory, AccessControl, Pausable, Reentra
     
     /**
      * @dev 批量创建众筹实例
+     * @param paramsArray 众筹参数数组，每个元素包含一个众筹的完整配置
+     * @return crowdsaleAddresses 创建的所有众筹合约地址数组
+     * 
+     * 实现步骤：
+     * 1. 计算总费用并验证支付金额
+     * 2. 循环调用createCrowdsale创建每个众筹实例
+     * 3. 收集所有创建的众筹地址
+     * 4. 退还多余的费用给调用者
+     * 
+     * 权限要求：需要FACTORY_OPERATOR_ROLE或启用公开创建
+     * 状态要求：合约未暂停，支付足够的总创建费用
+     * Gas优化：使用批量操作减少交易次数
      */
     function batchCreateCrowdsale(CrowdsaleParams[] calldata paramsArray)
         external
@@ -189,6 +216,17 @@ contract CrowdsaleFactory is ICrowdsaleFactory, AccessControl, Pausable, Reentra
     
     // ============ 内部部署函数 ============
     
+    /**
+     * @dev 部署代币合约
+     * @param params 众筹参数，包含代币名称、符号、总供应量等信息
+     * @return 部署的代币合约地址
+     * 
+     * 实现步骤：
+     * 1. 使用参数创建新的CrowdsaleToken实例
+     * 2. 工厂作为临时管理员进行初始化
+     * 3. 铸造全部代币供应量给工厂合约
+     * 4. 返回代币合约地址供后续配置使用
+     */
     function _deployToken(CrowdsaleParams memory params) internal returns (address) {
         CrowdsaleToken token = new CrowdsaleToken(
             params.tokenName,
@@ -203,6 +241,18 @@ contract CrowdsaleFactory is ICrowdsaleFactory, AccessControl, Pausable, Reentra
         return address(token);
     }
     
+    /**
+     * @dev 部署代币释放合约
+     * @param tokenAddress 关联的代币合约地址
+     * @param params 众筹参数，包含释放配置信息
+     * @return 部署的释放合约地址，如果未启用释放则返回零地址
+     * 
+     * 实现步骤：
+     * 1. 检查释放功能是否启用
+     * 2. 如果启用，创建新的TokenVesting实例
+     * 3. 工厂作为临时管理员进行初始化
+     * 4. 返回释放合约地址供后续权限配置
+     */
     function _deployVesting(address tokenAddress, CrowdsaleParams calldata params) 
         internal 
         returns (address) 
@@ -220,6 +270,15 @@ contract CrowdsaleFactory is ICrowdsaleFactory, AccessControl, Pausable, Reentra
         return address(vesting);
     }
     
+    /**
+     * @dev 部署白名单管理合约
+     * @return 部署的白名单合约地址
+     * 
+     * 实现步骤：
+     * 1. 创建新的WhitelistManager实例
+     * 2. 工厂作为临时管理员进行初始化
+     * 3. 返回白名单合约地址供众筹合约使用
+     */
     function _deployWhitelist() internal returns (address) {
         // 直接创建新的白名单合约实例
         WhitelistManager whitelist = new WhitelistManager(address(this));
@@ -227,6 +286,18 @@ contract CrowdsaleFactory is ICrowdsaleFactory, AccessControl, Pausable, Reentra
         return address(whitelist);
     }
     
+    /**
+     * @dev 部署退款金库合约
+     * @param beneficiary 资金受益人地址（通常是众筹的资金钱包）
+     * @param crowdsale 关联的众筹合约地址
+     * @return 部署的退款金库合约地址
+     * 
+     * 实现步骤：
+     * 1. 创建新的RefundVault实例
+     * 2. 设置受益人和关联众筹合约
+     * 3. 配置多签要求（需要1个签名）
+     * 4. 工厂作为临时管理员进行初始化
+     */
     function _deployVault(address beneficiary, address crowdsale) internal returns (address) {
         // 直接创建新的退款金库合约实例
         RefundVault vault = new RefundVault(
@@ -239,6 +310,19 @@ contract CrowdsaleFactory is ICrowdsaleFactory, AccessControl, Pausable, Reentra
         return address(vault);
     }
     
+    /**
+     * @dev 部署众筹主合约
+     * @param tokenAddress 关联的代币合约地址
+     * @param whitelistAddress 关联的白名单合约地址
+     * @param params 众筹参数配置
+     * @return 部署的众筹合约地址
+     * 
+     * 实现步骤：
+     * 1. 创建新的TokenCrowdsale实例
+     * 2. 传入代币、白名单、资金钱包地址
+     * 3. 工厂作为临时管理员进行初始化
+     * 4. 返回众筹合约地址供后续权限配置
+     */
     function _deployCrowdsale(
         address tokenAddress,
         address whitelistAddress,
@@ -256,6 +340,26 @@ contract CrowdsaleFactory is ICrowdsaleFactory, AccessControl, Pausable, Reentra
         return address(crowdsale);
     }
     
+    /**
+     * @dev 配置各合约间的权限关系
+     * @param crowdsaleAddress 众筹合约地址
+     * @param tokenAddress 代币合约地址
+     * @param vestingAddress 释放合约地址
+     * @param whitelistAddress 白名单合约地址
+     * @param vaultAddress 退款金库合约地址
+     * @param vestingParams 释放参数配置
+     * 
+     * 实现步骤：
+     * 1. 授予众筹合约代币铸造权限
+     * 2. 授予众筹合约释放管理权限（如果启用）
+     * 3. 授予众筹合约白名单管理权限
+     * 4. 配置退款金库操作权限
+     * 5. 设置释放合约和配置（如果启用）
+     * 6. 将所有管理权限转移给创建者
+     * 7. 清理工厂的临时权限
+     * 
+     * 权限设计：确保各合约间的最小权限原则和安全隔离
+     */
     function _setupPermissions(
         address crowdsaleAddress,
         address tokenAddress,
@@ -414,6 +518,19 @@ contract CrowdsaleFactory is ICrowdsaleFactory, AccessControl, Pausable, Reentra
     
     // ============ 查询功能 ============
     
+    /**
+     * @dev 获取指定众筹实例的详细信息
+     * @param crowdsaleAddress 众筹合约地址
+     * @return instance 众筹实例信息，包含所有相关合约地址和元数据
+     * 
+     * 实现步骤：
+     * 1. 验证众筹地址的有效性
+     * 2. 从映射中获取完整的实例信息
+     * 3. 返回包含创建者、时间戳、状态等的结构体
+     * 
+     * 权限要求：无，公开查询接口
+     * 用途：前端展示、合约集成、状态查询
+     */
     function getCrowdsaleInstance(address crowdsaleAddress) 
         external 
         view 
@@ -469,6 +586,23 @@ contract CrowdsaleFactory is ICrowdsaleFactory, AccessControl, Pausable, Reentra
         return allCrowdsales.length;
     }
     
+    /**
+     * @dev 验证众筹参数的有效性
+     * @param params 待验证的众筹参数结构体
+     * @return isValid 参数是否有效
+     * @return errorMessage 如果无效，返回具体的错误信息
+     * 
+     * 验证规则：
+     * 1. 代币名称和符号不能为空
+     * 2. 总供应量必须大于0
+     * 3. 软顶必须大于0，硬顶必须大于软顶
+     * 4. 开始时间必须在未来，结束时间必须晚于开始时间
+     * 5. 资金钱包地址不能为零地址
+     * 6. 代币价格必须大于0
+     * 7. 如果启用释放，验证释放参数的合理性
+     * 
+     * 用途：创建众筹前的参数校验，确保配置合理性
+     */
     function validateCrowdsaleParams(CrowdsaleParams calldata params) 
         public 
         view 
@@ -527,6 +661,19 @@ contract CrowdsaleFactory is ICrowdsaleFactory, AccessControl, Pausable, Reentra
     
     // ============ 管理功能 ============
     
+    /**
+     * @dev 更新众筹实例的活跃状态
+     * @param crowdsaleAddress 众筹合约地址
+     * @param isActive 新的活跃状态
+     * 
+     * 实现步骤：
+     * 1. 验证调用者具有工厂管理员权限
+     * 2. 验证众筹地址的有效性
+     * 3. 更新实例状态并发出事件
+     * 
+     * 权限要求：FACTORY_ADMIN_ROLE
+     * 用途：管理员控制众筹的可见性和活跃状态
+     */
     function updateCrowdsaleStatus(address crowdsaleAddress, bool isActive) 
         external 
         override
@@ -537,6 +684,18 @@ contract CrowdsaleFactory is ICrowdsaleFactory, AccessControl, Pausable, Reentra
         emit CrowdsaleStatusUpdated(crowdsaleAddress, isActive);
     }
     
+    /**
+     * @dev 设置众筹创建费用
+     * @param fee 新的创建费用（以wei为单位）
+     * 
+     * 实现步骤：
+     * 1. 验证调用者具有工厂管理员权限
+     * 2. 更新创建费用状态变量
+     * 3. 发出配置更新事件
+     * 
+     * 权限要求：FACTORY_ADMIN_ROLE
+     * 用途：动态调整众筹创建的成本
+     */
     function setCreationFee(uint256 fee) 
         external 
         override
@@ -609,6 +768,18 @@ contract CrowdsaleFactory is ICrowdsaleFactory, AccessControl, Pausable, Reentra
     
     /**
      * @dev 紧急停止特定众筹
+     * @param crowdsaleAddress 需要停止的众筹合约地址
+     * 
+     * 实现步骤：
+     * 1. 验证调用者具有工厂管理员权限
+     * 2. 验证众筹地址的有效性
+     * 3. 调用众筹合约的紧急暂停功能
+     * 4. 更新实例状态为非活跃
+     * 5. 发出状态更新事件
+     * 
+     * 权限要求：FACTORY_ADMIN_ROLE
+     * 用途：在发现安全问题或异常情况时快速停止众筹
+     * 安全考虑：只能由工厂管理员执行，确保紧急响应能力
      */
     function emergencyStopCrowdsale(address crowdsaleAddress) 
         external 
@@ -622,7 +793,19 @@ contract CrowdsaleFactory is ICrowdsaleFactory, AccessControl, Pausable, Reentra
     }
     
     /**
-     * @dev 获取合约模板地址
+     * @dev 获取合约模板地址（已废弃功能）
+     * @return crowdsale 众筹模板地址（已设为零地址）
+     * @return token 代币模板地址（已设为零地址）
+     * @return vesting 释放模板地址（已设为零地址）
+     * @return whitelist 白名单模板地址（已设为零地址）
+     * @return vault 退款金库模板地址（已设为零地址）
+     * 
+     * 实现说明：
+     * 1. 此功能已废弃，不再使用模板克隆模式
+     * 2. 现在直接创建新合约实例以避免复杂性
+     * 3. 保留接口用于向后兼容
+     * 
+     * 用途：接口兼容性，所有地址均返回零地址
      */
     function getTemplateAddresses() 
         external 

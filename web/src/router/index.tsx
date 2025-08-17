@@ -1,7 +1,7 @@
 import React from 'react';
 import { Routes, Route } from 'react-router-dom';
-import { Layout } from '../components/common/Layout';
-import { Home } from '../pages/Home';
+import Layout from '../components/common/Layout';
+import Home from '../pages/Home';
 import { CrowdsaleDetail } from '../pages/CrowdsaleDetail';
 import { Dashboard } from '../pages/Dashboard';
 import { TransactionHistory } from '../pages/TransactionHistory';
